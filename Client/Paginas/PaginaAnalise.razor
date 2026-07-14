@@ -161,6 +161,11 @@
                     <span>Preencher FPD</span>
                 </button>
 
+                <button class="btn-fpd" @onclick="() => _fpdEtapasAberto = true" title="Registrar Ficha de Previsão de Desembolso em etapas">
+                    <i class="bi bi-list-ol"></i>
+                    <span>Preencher FPD (Etapas)</span>
+                </button>
+
                 <button class="btn-processar @(_processando ? "btn-processando" : "")"
                         @onclick="ExecutarMacro"
                         disabled="@(_processando || _carregando)">
@@ -357,6 +362,12 @@
     <PainelPreencherFpd AoVoltar="() => _fpdAberto = false" AoSolicitar="SolicitarDesembolso" />
 }
 
+<!-- Dialog Preencher FPD (versão em etapas) -->
+@if (_fpdEtapasAberto)
+{
+    <PainelPreencherFpdEtapas AoVoltar="() => _fpdEtapasAberto = false" AoSolicitar="SolicitarDesembolso" />
+}
+
 <!-- Dialog de detalhes -->
 @if (_idDialogAberto is not null)
 {
@@ -385,12 +396,14 @@
     private bool    _carregando            = true;
     private bool    _processando           = false;
     private bool    _fpdAberto             = false;
+    private bool    _fpdEtapasAberto       = false;
 
     // Troca de filtro sai do modo Preencher FPD (voltar para a lista)
     private void SelecionarFiltro(string filtro)
     {
         _filtroAtivo = filtro;
         _fpdAberto = false;
+        _fpdEtapasAberto = false;
     }
 
     private Dictionary<string, Funcionario> _atribuicoes = new();
@@ -463,6 +476,7 @@
     private async Task SolicitarDesembolso(PreenchimentoFpd fpd)
     {
         _fpdAberto = false;
+        _fpdEtapasAberto = false;
         StateHasChanged();
 
         try

@@ -39,8 +39,8 @@
                 <label class="fpd-label">Contrato AF <span class="fpd-obrigatorio">*</span></label>
                 <div class="fpd-af-linha">
                     <input class="fpd-input" placeholder="Ex.: 0558698-45"
-                           @bind="_fpd.ContratoAf" @bind:after="InvalidarValidacao" />
-                    <button class="fpd-btn-buscar" @onclick="BuscarContrato" disabled="@_buscando" title="Buscar na base">
+                           @bind="_fpd.ContratoAf" @bind:after="InvalidarValidacao" disabled="@_fpd.PrimeiroDesembolso" />
+                    <button class="fpd-btn-buscar" @onclick="BuscarContrato" disabled="@(_buscando || _fpd.PrimeiroDesembolso)" title="Buscar na base">
                         @if (_buscando) { <i class="bi bi-arrow-repeat spin"></i> }
                         else            { <i class="bi bi-search"></i> }
                         <span>Buscar</span>
@@ -125,11 +125,15 @@
                     </div>
                 </div>
 
-                <div class="fpd-campo"><label class="fpd-label">Tipo de desembolso</label>
-                    <select class="fpd-input" @bind="_fpd.TipoDesembolso">
-                        <option value="normal">Normal</option>
-                        <option value="adiantamento">Adiantamento</option>
-                    </select></div>
+                <div class="fpd-check-destaque fpd-tipo-destaque">
+                    <span class="fpd-tipo-rotulo">Tipo de desembolso</span>
+                    <div class="fpd-tipo-opcoes">
+                        <button type="button" class="fpd-tipo-opc @(_fpd.TipoDesembolso == "normal" ? "ativo" : "")"
+                                @onclick='() => DefinirTipoDesembolso("normal")'>Normal</button>
+                        <button type="button" class="fpd-tipo-opc @(_fpd.TipoDesembolso == "adiantamento" ? "ativo" : "")"
+                                @onclick='() => DefinirTipoDesembolso("adiantamento")'>Adiantamento</button>
+                    </div>
+                </div>
 
                 <div class="fpd-linha-sn">
                     <div class="fpd-sn-item"><label class="fpd-label">Retorno parcial</label>
@@ -425,7 +429,8 @@
     }
 
     // Primeiro desembolso não tem "último desembolso" a comparar — força "não" e
-    // trava o toggle (some também Funcionalidade/Conclusão).
+    // trava o toggle (some também Funcionalidade/Conclusão). Também não há
+    // contrato AF prévio a buscar, então o campo/botão de busca desabilita.
     private void AoMudarPrimeiroDesembolso()
     {
         if (_fpd.PrimeiroDesembolso)
@@ -434,6 +439,13 @@
             _fpd.Funcionalidade   = null;
             _fpd.Conclusao        = null;
         }
+        InvalidarValidacao();
+    }
+
+    private void DefinirTipoDesembolso(string tipo)
+    {
+        if (_fpd.TipoDesembolso == tipo) return;
+        _fpd.TipoDesembolso = tipo;
         InvalidarValidacao();
     }
 
@@ -577,6 +589,19 @@
 .fpd-check input { width: 15px; height: 15px; accent-color: var(--brand-700); }
 .fpd-check-destaque { margin-bottom: 16px; padding: 10px 12px; background: var(--brand-50); border: 1px solid var(--brand-100); border-radius: var(--radius-md); font-weight: 600; width: fit-content; }
 .fpd-check-inline { white-space: nowrap; }
+
+/* Tipo de desembolso — mesmo "cartão" destacado do primeiro desembolso, mas com duas opções marcáveis */
+.fpd-tipo-destaque { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 0; }
+.fpd-tipo-rotulo { font-size: 12px; color: var(--ink-900); }
+.fpd-tipo-opcoes { display: inline-flex; gap: 6px; }
+.fpd-tipo-opc {
+    height: 28px; padding: 0 14px; border-radius: var(--radius-full);
+    font-size: 12px; font-weight: 600; font-family: inherit;
+    border: 1px solid var(--brand-200); color: var(--brand-700); background: #fff;
+    cursor: pointer; transition: background .12s, color .12s, border-color .12s;
+}
+.fpd-tipo-opc:hover:not(.ativo) { background: var(--brand-100); }
+.fpd-tipo-opc.ativo { background: var(--brand-700); border-color: var(--brand-700); color: #fff; }
 
 /* DT Sócio-ambiental + NSA na mesma linha */
 .fpd-data-nsa { display: flex; align-items: center; gap: 8px; }
