@@ -1,0 +1,232 @@
+<aside class="menu-lateral @(Aberto ? "" : "fechado")">
+
+    <!-- Logo X Caixa -->
+    <div class="menu-logo">
+        <svg viewBox="0 0 100 62" class="logo-x" xmlns="http://www.w3.org/2000/svg" aria-label="Caixa">
+            <polygon points="36,0 68,0 32,62 0,62" fill="#F39200" />
+            <polygon points="64,14 100,14 72,62 40,62" fill="#FFFFFF" opacity=".95" />
+        </svg>
+    </div>
+
+    <nav class="menu-nav">
+
+        <NavLink class="menu-link" href="" Match="NavLinkMatch.All">
+            <i class="bi bi-house-door-fill"></i>
+            <span>Página Inicial</span>
+        </NavLink>
+
+        @foreach (var grupo in _grupos)
+        {
+            var aberto = _gruposAbertos.Contains(grupo.Titulo);
+
+            <button class="menu-grupo @(aberto ? "aberto" : "")" @onclick="() => AlternarGrupo(grupo.Titulo)">
+                <i class="bi @grupo.Icone"></i>
+                <span>@grupo.Titulo</span>
+                <i class="bi bi-chevron-down menu-grupo-chevron"></i>
+            </button>
+
+            <div class="menu-subitens @(aberto ? "aberto" : "")">
+                <div class="menu-subitens-inner">
+                    @foreach (var item in grupo.Itens)
+                    {
+                        @if (item.Href is not null)
+                        {
+                            <NavLink class="menu-link sub" href="@item.Href" Match="NavLinkMatch.All">
+                                <i class="bi @item.Icone"></i>
+                                <span>@item.Titulo</span>
+                            </NavLink>
+                        }
+                        else
+                        {
+                            <button class="menu-link sub desabilitado" title="Disponível apenas na Plataforma Operacional">
+                                <i class="bi @item.Icone"></i>
+                                <span>@item.Titulo</span>
+                            </button>
+                        }
+                    }
+                </div>
+            </div>
+        }
+
+    </nav>
+</aside>
+
+@code {
+    [Parameter] public bool Aberto { get; set; } = true;
+
+    private record ItemMenu(string Titulo, string Icone, string? Href);
+    private record GrupoMenu(string Titulo, string Icone, List<ItemMenu> Itens);
+
+    // Espelha as áreas do NavMenu da Plataforma Operacional; itens sem Href são
+    // placeholders de módulos que só existem no sistema original.
+    private readonly List<GrupoMenu> _grupos =
+    [
+        new("Contratação", "bi-file-earmark-text",
+        [
+            new("Checklist Consultar", "bi-card-checklist", null),
+            new("Parecer Jurídico",    "bi-journal-text",   null),
+        ]),
+        new("Aplicação", "bi-diagram-3",
+        [
+            new("SIPUB · Desembolsos", "bi-graph-up-arrow", ""),
+            new("Desembolsos · v2",    "bi-stars",          "2"),
+            new("Apresentação",        "bi-easel2",         "apresentacao"),
+        ]),
+        new("Cobrança", "bi-currency-exchange",
+        [
+            new("Amortização Caixa", "bi-cash-coin",   null),
+            new("CRF Home",          "bi-patch-check", null),
+        ]),
+        new("Monitoramento", "bi-clipboard-data",
+        [
+            new("Consultar Lote", "bi-search",   null),
+            new("Solicitar Lote", "bi-download", null),
+        ]),
+    ];
+
+    private readonly HashSet<string> _gruposAbertos = ["Aplicação"];
+
+    private void AlternarGrupo(string titulo)
+    {
+        if (!_gruposAbertos.Remove(titulo))
+            _gruposAbertos.Add(titulo);
+    }
+}
+
+
+<style>
+/* ══════════════════════════════════════════════════════════════
+   NAVMENU LATERAL — fiel ao MudDrawer da Plataforma Operacional
+   fundo #005CA9, texto/ícones brancos, 250px, altura total
+   ══════════════════════════════════════════════════════════════ */
+.menu-lateral {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: var(--drawer-w);
+    background: var(--po-azul);
+    z-index: 250;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
+    transition: transform .25s ease;
+    box-shadow: 2px 0 8px rgba(0, 0, 0, .12);
+}
+.menu-lateral.fechado {
+    transform: translateX(-100%);
+    box-shadow: none;
+}
+
+/* Scrollbar discreta sobre o azul */
+.menu-lateral::-webkit-scrollbar { width: 6px; }
+.menu-lateral::-webkit-scrollbar-thumb { background: rgba(255,255,255,.25); border: none; }
+
+/* ── Logo X Caixa ── */
+.menu-logo {
+    padding: 10px 16px 8px;
+    flex-shrink: 0;
+    min-height: var(--topbar-h);
+    display: flex;
+    align-items: center;
+}
+.logo-x {
+    height: 42px;
+    width: 58px;
+    display: block;
+}
+
+/* ── Nav ── */
+.menu-nav {
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 24px;
+}
+
+/* Link raiz e itens (mesma métrica do MudNavLink) */
+.menu-nav .menu-link,
+.menu-grupo {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    width: 100%;
+    min-height: 48px;
+    padding: 0 16px;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 400;
+    text-align: left;
+    letter-spacing: 0;
+    transition: background .15s;
+    white-space: nowrap;
+}
+.menu-nav .menu-link i,
+.menu-grupo i:first-child {
+    font-size: 17px;
+    width: 24px;
+    flex-shrink: 0;
+    text-align: center;
+    color: #fff;
+}
+.menu-nav .menu-link span,
+.menu-grupo span {
+    margin-left: 12px;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.menu-nav .menu-link:hover,
+.menu-grupo:hover {
+    background: rgba(255, 255, 255, .10);
+}
+
+/* Item ativo (rota atual) */
+.menu-nav .menu-link.active {
+    background: rgba(255, 255, 255, .16);
+    font-weight: 600;
+}
+
+/* ── Grupo expansível ── */
+.menu-grupo-chevron {
+    font-size: 12px !important;
+    width: auto !important;
+    transition: transform .2s ease;
+}
+.menu-grupo.aberto .menu-grupo-chevron {
+    transform: rotate(180deg);
+}
+
+/* Corpo do grupo com animação de expansão */
+.menu-subitens {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows .22s ease;
+}
+.menu-subitens.aberto { grid-template-rows: 1fr; }
+.menu-subitens-inner { overflow: hidden; }
+
+/* Sub-itens levemente recuados, tom mais escuro (como o MudNavGroup) */
+.menu-subitens-inner .menu-link.sub {
+    padding-left: 32px;
+    min-height: 42px;
+    font-size: 13px;
+    background: rgba(0, 0, 0, .10);
+}
+.menu-subitens-inner .menu-link.sub:hover {
+    background: rgba(0, 0, 0, .18);
+}
+.menu-subitens-inner .menu-link.sub.active {
+    background: rgba(255, 255, 255, .16);
+}
+
+/* Placeholder de módulo que só existe na Plataforma Operacional */
+.menu-subitens-inner .menu-link.sub.desabilitado {
+    opacity: .55;
+    cursor: not-allowed;
+}
+.menu-subitens-inner .menu-link.sub.desabilitado:hover {
+    background: rgba(0, 0, 0, .10);
+}
+</style>

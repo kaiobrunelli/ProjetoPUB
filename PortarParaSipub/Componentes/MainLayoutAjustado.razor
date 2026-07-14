@@ -1,0 +1,74 @@
+@* ══════════════════════════════════════════════════════════════════════════
+   MainLayout da Plataforma Operacional — ÚNICA mudança: o <SinoNotificacoes />
+   dentro do MudAppBar (e o align-center na div do usuário para alinhar o sino).
+   Todo o resto está idêntico ao original.
+   ══════════════════════════════════════════════════════════════════════════ *@
+@using PlataformaOperacional.Componentes.CustomTheme
+@inherits LayoutComponentBase
+@inject UsuarioService UsuarioService
+@inject BlazorMockService BlazorMockService
+@inject MudThemeService MudThemeService
+
+<MudThemeProvider Theme="@_customTheme" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<MudLayout>
+    <MudAppBar >
+        <MudIconButton  Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())" />
+            <MudItem Class="d-flex justify-space-between flex-grow-1">
+            <MudText Typo="Typo.h6">  CEFGA | Plataforma Operacional  <span style="color:  blanchedalmond"> @_statusDadosMockados </span></MudText>
+                <div Class=" mr-16 gap-4 d-flex align-center ">
+
+                    @* ── ÚNICA LINHA NOVA: sino de notificações ── *@
+                    <SinoNotificacoes Matricula="@usuarioLogin.Matricula" />
+
+                    <MudIcon Icon="@Icons.Material.Filled.Person"></MudIcon>
+                    <div class="d-inline">
+                        <MudText  Typo="Typo.body1">Olá @usuarioLogin.NomeCompleto</MudText>
+                    </div>
+                </div>
+            </MudItem>
+    </MudAppBar>
+    <MudDrawer @bind-Open="@_drawerOpen" ClipMode="DrawerClipMode.Never" >
+        <MudImage Class="ml-4 my-2 " Height="45" Width="60" Src="imgs-carousel/XCaixaBranco.png"></MudImage>
+        <NavMenu />
+    </MudDrawer>
+    <MudMainContent >
+        <MudContainer MaxWidth="MaxWidth.Medium" Class="background-mudcustom">
+            @Body
+        </MudContainer>
+    <MudTFootRow Class="container-footer-item align-center pl-4 ga-2">
+        <MudText Typo="Typo.body2" Style="font-weight:500">2025 - CN Ativo do FTGS - CEFGA </MudText>
+        <MudText Typo="Typo.body2">#INTERNO.CONFIDENCIAL </MudText>
+    </MudTFootRow>
+    </MudMainContent>
+</MudLayout>
+
+@code {
+    bool _drawerOpen = true;
+    private ConfiguracoesUsuario usuarioLogin = new ConfiguracoesUsuario();
+    private string _statusDadosMockados =>  BlazorMockService.MockarDados? "  ## Dados Mockados  ##" : "";
+
+    private MudTheme _customTheme = new();
+
+    private void AtualizarTema()
+    {
+        _customTheme = MudThemeService.CurrentTheme;
+        InvokeAsync(StateHasChanged);
+    }
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        MudThemeService.OnThemeChanged += AtualizarTema;
+        _customTheme = MudThemeService.CurrentTheme;
+        usuarioLogin = await UsuarioService.ConsultaConfiguracaoUsuario();
+    }
+
+    void DrawerToggle()
+    {
+        _drawerOpen = !_drawerOpen;
+    }
+}

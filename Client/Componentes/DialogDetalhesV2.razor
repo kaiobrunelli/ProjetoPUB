@@ -1,0 +1,1316 @@
+@inject IJSRuntime JS
+@inject HttpClient Http
+@inject ServicoUsuario ServicoUsuario
+@using System.Net.Http.Json
+@using System.Globalization
+
+@*
+   DIALOG DETALHES V2 — painel lateral (drawer) em vez de modal central.
+   Decisões de UX:
+   • Drawer à direita preserva o contexto da lista ao fundo (padrão Linear/Stripe/GitHub)
+   • Hero com o valor da parcela em destaque — a informação nº 1 da análise
+   • Anel de progresso dá leitura instantânea de "quanto falta"
+   • Jornada (stepper) situa o desembolso no fluxo sem o usuário deduzir pelo status
+   • Abas separam leitura (Visão geral) de trabalho (Validações) e auditoria (Atividade)
+   • Rodapé explica POR QUE a aprovação está bloqueada, em vez de só desabilitar
+   • Teclado: Esc fecha · ←/→ navegam entre desembolsos
+*@
+
+<div class="v2-backdrop" @onclick="FecharDialog"></div>
+
+<aside class="v2-painel" role="dialog" aria-modal="true" tabindex="0"
+       @ref="_painelRef" @onkeydown="TratarTecla" @onclick:stopPropagation>
+
+    @{
+        var detalhe    = ServicoMock.ObterDetalheContrato(Desembolso);
+        var validacoes = ObterValidacoesEfetivas();
+        var totalValidas   = validacoes.Count(v => v.Status == "valido");
+        var totalInvalidas = validacoes.Count(v => v.Status == "invalido");
+        var totalPendentes = validacoes.Count(v => v.Status == "pendente");
+        var pctValidado    = validacoes.Count > 0 ? (double)totalValidas / validacoes.Count : 0;
+        var diasPrazo      = (Desembolso.PrazoFinal.Date - DateTime.Today).Days;
+        var podeAprovar    = totalInvalidas == 0 && totalPendentes == 0;
+    }
+
+    <!-- ── Topbar ── -->
+    <header class="v2-topbar">
+        <div class="v2-nav-grupo">
+            <button class="v2-btn-nav" @onclick="Anterior" disabled="@(!TemAnterior)" title="Anterior (←)">
+                <i class="bi bi-chevron-left"></i>
+            </button>
+            <span class="v2-nav-pos">@(IndiceAtual + 1) de @Todos.Count</span>
+            <button class="v2-btn-nav" @onclick="Proximo" disabled="@(!TemProximo)" title="Próximo (→)">
+                <i class="bi bi-chevron-right"></i>
+            </button>
+        </div>
+        <div class="v2-topbar-dicas">
+            <span class="v2-kbd">←</span><span class="v2-kbd">→</span> navegar
+            <span class="v2-kbd ml">Esc</span> fechar
+        </div>
+        <button class="v2-btn-fechar" @onclick="FecharDialog" title="Fechar (Esc)">
+            <i class="bi bi-x-lg"></i>
+        </button>
+    </header>
+
+    <!-- ── Hero ── -->
+    <section class="v2-hero">
+        <div class="v2-hero-info">
+            <div class="v2-hero-linha1">
+                <PilulhaStatus Status="@Desembolso.Status" Tamanho="sm" />
+                <span class="v2-hero-gigov">@Desembolso.Gigov</span>
+                <button class="v2-btn-copiar @(_copiado ? "copiado" : "")" @onclick="CopiarContrato"
+                        title="Copiar número do contrato">
+                    <span class="v2-contrato-mono">@Desembolso.Contrato</span>
+                    <i class="bi @(_copiado ? "bi-check2" : "bi-copy")"></i>
+                </button>
+            </div>
+
+            <h2 class="v2-hero-mutuario">@Desembolso.Mutuario</h2>
+
+            <div class="v2-hero-valor">
+                <span class="v2-hero-valor-num">@ServicoMock.FormatarBRL(Desembolso.Valor)</span>
+                <span class="v2-hero-valor-label">valor da parcela · desembolso @detalhe.Financiamento.NumeroDesembolso</span>
+            </div>
+
+            <div class="v2-hero-chips">
+                <span class="v2-chip v2-chip-prazo @(diasPrazo <= 3 ? "critico" : diasPrazo <= 7 ? "atencao" : "")">
+                    <i class="bi bi-calendar3"></i>
+                    @(diasPrazo < 0 ? $"vencido há {-diasPrazo}d"
+                      : diasPrazo == 0 ? "vence hoje"
+                      : $"{diasPrazo}d para o prazo")
+                    · @Desembolso.PrazoFinal.ToString("dd MMM", new CultureInfo("pt-BR"))
+                </span>
+
+                @if (Analista is not null)
+                {
+                    <button class="v2-chip v2-chip-analista" @onclick="() => { if (!SomenteLeitura) _popoverAberto = !_popoverAberto; }">
+                        <span class="v2-avatar-mini" style="background:@Analista.Cor">@Analista.Iniciais</span>
+                        @Analista.Nome
+                        @if (!SomenteLeitura) { <i class="bi bi-chevron-down"></i> }
+                    </button>
+                }
+                else if (!SomenteLeitura)
+                {
+                    <button class="v2-chip v2-chip-atribuir" @onclick="() => _popoverAberto = !_popoverAberto">
+                        <i class="bi bi-person-plus"></i> Atribuir responsável
+                    </button>
+                }
+            </div>
+        </div>
+
+        <!-- Anel de progresso -->
+        <div class="v2-anel-wrap" title="@totalValidas de @validacoes.Count validações concluídas">
+            <svg viewBox="0 0 84 84" class="v2-anel">
+                <circle cx="42" cy="42" r="36" class="v2-anel-trilha" />
+                <circle cx="42" cy="42" r="36" class="v2-anel-fill @(totalInvalidas > 0 ? "tem-falha" : "")"
+                        stroke-dasharray="@FormatarDash(pctValidado)" />
+            </svg>
+            <div class="v2-anel-centro">
+                <span class="v2-anel-num">@totalValidas<span class="v2-anel-total">/@validacoes.Count</span></span>
+                <span class="v2-anel-label">validações</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── Jornada do desembolso ── -->
+    <nav class="v2-jornada">
+        @foreach (var (etapa, indice) in _etapasJornada.Select((e, i) => (e, i)))
+        {
+            var estado = EstadoEtapa(indice);
+            <div class="v2-jornada-etapa @estado">
+                <div class="v2-jornada-ponto">
+                    @if (estado == "concluida") { <i class="bi bi-check"></i> }
+                    else if (estado == "falha") { <i class="bi bi-exclamation"></i> }
+                    else { <span>@(indice + 1)</span> }
+                </div>
+                <span class="v2-jornada-nome">@etapa</span>
+                @if (indice < _etapasJornada.Length - 1)
+                {
+                    <div class="v2-jornada-linha @(estado == "concluida" ? "cheia" : "")"></div>
+                }
+            </div>
+        }
+    </nav>
+
+    <!-- ── Abas ── -->
+    <div class="v2-tabs">
+        <button class="v2-tab @(_aba == "geral" ? "ativa" : "")" @onclick='() => _aba = "geral"'>
+            <i class="bi bi-grid-1x2"></i> Visão geral
+        </button>
+        <button class="v2-tab @(_aba == "validacoes" ? "ativa" : "")" @onclick='() => _aba = "validacoes"'>
+            <i class="bi bi-list-check"></i> Validações
+            @if (totalInvalidas + totalPendentes > 0)
+            {
+                <span class="v2-tab-badge @(totalInvalidas > 0 ? "falha" : "")">@(totalInvalidas + totalPendentes)</span>
+            }
+        </button>
+        <button class="v2-tab @(_aba == "atividade" ? "ativa" : "")" @onclick='() => _aba = "atividade"'>
+            <i class="bi bi-clock-history"></i> Atividade
+        </button>
+    </div>
+
+    <!-- ── Conteúdo ── -->
+    <div class="v2-conteudo">
+
+        @if (_aba == "geral")
+        {
+            <!-- Cards financeiros -->
+            <div class="v2-stats">
+                <div class="v2-stat">
+                    <span class="v2-stat-label">Valor de investimento</span>
+                    <span class="v2-stat-num">@ServicoMock.FormatarBRL(detalhe.Financiamento.ValorInvestimento)</span>
+                </div>
+                <div class="v2-stat">
+                    <span class="v2-stat-label">Valor de financiamento</span>
+                    <span class="v2-stat-num">@ServicoMock.FormatarBRL(detalhe.Financiamento.ValorFinanciamento)</span>
+                </div>
+                <div class="v2-stat">
+                    <span class="v2-stat-label">Contrapartida mínima</span>
+                    <span class="v2-stat-num">@detalhe.Financiamento.Amortizacao</span>
+                </div>
+            </div>
+
+            <!-- Obra concluída -->
+            <div class="v2-secao">
+                <div class="v2-secao-header">
+                    <span class="v2-secao-titulo">Execução da obra (BM)</span>
+                    <span class="v2-secao-valor">@detalhe.Financiamento.PercentualObra%</span>
+                </div>
+                <div class="v2-barra">
+                    <div class="v2-barra-fill" style="width:@(detalhe.Financiamento.PercentualObra)%"></div>
+                </div>
+                <span class="v2-secao-sub">percentual medido da obra concluída</span>
+            </div>
+
+            <!-- Dados do contrato -->
+            <div class="v2-secao">
+                <div class="v2-secao-header">
+                    <span class="v2-secao-titulo">Dados do contrato</span>
+                </div>
+                <div class="v2-dados-grid">
+                    <div class="v2-dado"><span>Programa</span><strong>@detalhe.Financiamento.Programa</strong></div>
+                    <div class="v2-dado"><span>Fase</span><strong>@detalhe.Financiamento.Fase</strong></div>
+                    <div class="v2-dado"><span>Mutuário</span><strong>@detalhe.Mutuario.Nome</strong></div>
+                    <div class="v2-dado"><span>Tipo</span><strong>@detalhe.Mutuario.Tipo</strong></div>
+                    <div class="v2-dado"><span>AF</span><strong>@detalhe.Af.Sigla — @detalhe.Af.Nome</strong></div>
+                    <div class="v2-dado"><span>Nº do desembolso</span><strong>@detalhe.Financiamento.NumeroDesembolso</strong></div>
+                </div>
+            </div>
+
+            @if (totalInvalidas > 0)
+            {
+                <button class="v2-alerta-pendencias" @onclick='() => _aba = "validacoes"'>
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    <span><strong>@totalInvalidas @(totalInvalidas == 1 ? "validação inválida" : "validações inválidas")</strong> impedem a aprovação — clique para tratar</span>
+                    <i class="bi bi-arrow-right"></i>
+                </button>
+            }
+        }
+        else if (_aba == "validacoes")
+        {
+            @if (SomenteLeitura && TotalComComentario > 0)
+            {
+                <div class="v2-revisao-nota">
+                    <i class="bi bi-chat-text-fill"></i>
+                    <strong>@TotalComComentario</strong>&nbsp;validaç@(TotalComComentario == 1 ? "ão" : "ões") com comentário — expandidas abaixo para revisão.
+                </div>
+            }
+            <!-- Filtros -->
+            <div class="v2-filtros">
+                <button class="v2-filtro @(_filtroValidacao == "todas" ? "ativo" : "")" @onclick='() => _filtroValidacao = "todas"'>
+                    Todas <span>@validacoes.Count</span>
+                </button>
+                <button class="v2-filtro falha @(_filtroValidacao == "invalido" ? "ativo" : "")" @onclick='() => _filtroValidacao = "invalido"'>
+                    Inválidas <span>@totalInvalidas</span>
+                </button>
+                <button class="v2-filtro atencao @(_filtroValidacao == "pendente" ? "ativo" : "")" @onclick='() => _filtroValidacao = "pendente"'>
+                    A analisar <span>@totalPendentes</span>
+                </button>
+                <button class="v2-filtro ok @(_filtroValidacao == "valido" ? "ativo" : "")" @onclick='() => _filtroValidacao = "valido"'>
+                    Válidas <span>@totalValidas</span>
+                </button>
+            </div>
+
+            var listaFiltrada = _filtroValidacao == "todas"
+                ? validacoes
+                : validacoes.Where(v => v.Status == _filtroValidacao).ToList();
+
+            @if (!listaFiltrada.Any())
+            {
+                <div class="v2-vazio">
+                    <i class="bi bi-check2-circle"></i>
+                    <span>Nenhuma validação neste filtro</span>
+                </div>
+            }
+
+            @foreach (var v in listaFiltrada)
+            {
+                var chave = $"v{v.Numero}";
+                var aberta = _validacoesAbertas.Contains(chave);
+                var comentarios = ObterComentarios(chave);
+
+                <div class="v2-val @v.Status @(aberta ? "aberta" : "")">
+                    <button class="v2-val-header" @onclick="() => AlternarValidacao(chave)">
+                        <span class="v2-val-num">@v.Numero.ToString().PadLeft(2, '0')</span>
+                        <span class="v2-val-titulo">@v.Titulo</span>
+                        @if (comentarios.Any() || v.SubItens.Any(s => ObterComentarios($"{chave}-{s.Numero}").Any()))
+                        {
+                            <i class="bi bi-chat-text-fill v2-val-comm"></i>
+                        }
+                        <PilulhaStatus Status="@v.Status" Tamanho="sm" />
+                        <i class="bi bi-chevron-down v2-val-chevron"></i>
+                    </button>
+                    <div class="acc-body @(aberta ? "aberto" : "")">
+                        <div class="acc-inner">
+                            <div class="v2-val-corpo">
+                                @if (!string.IsNullOrEmpty(v.Detalhe))
+                                {
+                                    <p class="v2-val-detalhe">@v.Detalhe</p>
+                                }
+
+                                @foreach (var sub in v.SubItens)
+                                {
+                                    var chaveSub = $"{chave}-{sub.Numero}";
+                                    <div class="v2-sub @sub.Status">
+                                        <div class="v2-sub-header">
+                                            <span class="v2-sub-num">@sub.Numero</span>
+                                            <span class="v2-sub-titulo">@sub.Titulo</span>
+                                            <PilulhaStatus Status="@sub.Status" Tamanho="sm" />
+                                        </div>
+                                        @if (!string.IsNullOrEmpty(sub.Detalhe))
+                                        {
+                                            <p class="v2-sub-detalhe">@sub.Detalhe</p>
+                                        }
+                                        <FioComentario Comentarios="@ObterComentarios(chaveSub)"
+                                                       ApenasLeitura="SomenteLeitura"
+                                                       AoAdicionarComentario="@(c => AdicionarComentario(chaveSub, c))" />
+                                    </div>
+                                }
+
+                                @if (!v.SubItens.Any())
+                                {
+                                    <FioComentario Comentarios="@comentarios"
+                                                   ApenasLeitura="SomenteLeitura"
+                                                   AoAdicionarComentario="@(c => AdicionarComentario(chave, c))" />
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+        else
+        {
+            <!-- Atividade: timeline -->
+            <div class="v2-timeline">
+                @foreach (var evento in MontarTimeline())
+                {
+                    <div class="v2-evento @evento.Tipo">
+                        <div class="v2-evento-ponto"><i class="bi @evento.Icone"></i></div>
+                        <div class="v2-evento-corpo">
+                            <div class="v2-evento-texto">@((MarkupString)evento.Texto)</div>
+                            <div class="v2-evento-quando">@evento.Quando</div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+    <!-- ── Rodapé ── -->
+    <footer class="v2-rodape">
+        @if (SomenteLeitura)
+        {
+            <div class="v2-rodape-status">
+                <i class="bi bi-clipboard-check ok"></i>
+                <span>Checagem final — somente visualização (desembolso baixado)</span>
+            </div>
+        }
+        else if (_modoRejeicao)
+        {
+            <input class="v2-input-coord" type="text" placeholder="Código da coordenação (ex: COORD-SIPUB)"
+                   @bind="_codigoCoordenacao" @bind:event="oninput" />
+            <button class="v2-btn-secundario" @onclick="CancelarRejeicao">Cancelar</button>
+            <button class="v2-btn-recusar" @onclick="RejeitarDesembolso"
+                    disabled="@(string.IsNullOrWhiteSpace(_codigoCoordenacao) || _processandoAcao)">
+                <i class="bi bi-x-circle"></i> Confirmar rejeição
+            </button>
+        }
+        else
+        {
+            <div class="v2-rodape-status">
+                @if (podeAprovar)
+                {
+                    <i class="bi bi-check-circle-fill ok"></i>
+                    <span>Todas as validações concluídas — pronto para aprovar</span>
+                }
+                else if (totalInvalidas > 0)
+                {
+                    <i class="bi bi-lock-fill falha"></i>
+                    <span>
+                        <strong>@totalInvalidas inválida@(totalInvalidas > 1 ? "s" : "")</strong>
+                        @if (totalPendentes > 0)
+                        {
+                            <text> e <strong>@totalPendentes pendente@(totalPendentes > 1 ? "s" : "")</strong></text>
+                        }
+                        @(totalInvalidas + totalPendentes > 1 ? " bloqueiam" : " bloqueia") a aprovação
+                    </span>
+                }
+                else
+                {
+                    <i class="bi bi-hourglass-split atencao"></i>
+                    <span><strong>@totalPendentes validação@(totalPendentes > 1 ? "ões" : "") pendente@(totalPendentes > 1 ? "s" : "")</strong> de análise</span>
+                }
+            </div>
+            <button class="v2-btn-recusar" @onclick="() => _modoRejeicao = true" disabled="@_processandoAcao">
+                <i class="bi bi-x-circle"></i> Recusar
+            </button>
+            <button class="v2-btn-aprovar" disabled="@(!podeAprovar || _processandoAcao)" @onclick="AprovarDesembolso">
+                @if (_processandoAcao)
+                {
+                    <i class="bi bi-arrow-repeat spinner"></i><span>Processando…</span>
+                }
+                else
+                {
+                    <i class="bi @(podeAprovar ? "bi-check-circle" : "bi-lock")"></i><span>Aprovar desembolso</span>
+                }
+            </button>
+        }
+    </footer>
+
+    <!-- Popover de atribuição -->
+    @if (_popoverAberto)
+    {
+        <div class="v2-popover">
+            <div class="v2-popover-titulo">Atribuir analista</div>
+            @foreach (var f in ServicoMock.ObterFuncionarios())
+            {
+                <button class="v2-popover-item" @onclick="() => AtribuirAnalista(f)">
+                    <span class="v2-avatar-mini" style="background:@f.Cor">@f.Iniciais</span>
+                    <span>@f.Nome</span>
+                </button>
+            }
+            @if (Analista is not null)
+            {
+                <button class="v2-popover-remover" @onclick="RemoverAnalista">Remover atribuição</button>
+            }
+        </div>
+    }
+</aside>
+
+@code {
+    [Parameter, EditorRequired] public DesembolsoCAD       Desembolso { get; set; } = null!;
+    [Parameter, EditorRequired] public List<DesembolsoCAD> Todos      { get; set; } = [];
+    [Parameter] public Funcionario?  Analista   { get; set; }
+    [Parameter] public EventCallback AoFechar   { get; set; }
+    [Parameter] public EventCallback<string>       AoNavegar  { get; set; }
+    [Parameter] public EventCallback<Funcionario?> AoAtribuir { get; set; }
+    /// <summary>Checagem final (DRP): tudo visível, nada editável.</summary>
+    [Parameter] public bool SomenteLeitura { get; set; }
+
+    private ElementReference _painelRef;
+    private string _aba = "geral";
+    private string _filtroValidacao = "todas";
+    private readonly HashSet<string> _validacoesAbertas = [];
+    private Dictionary<string, List<Comentario>> _comentarios = new();
+    private bool _popoverAberto;
+    private bool _modoRejeicao;
+    private bool _processandoAcao;
+    private bool _copiado;
+    private string _codigoCoordenacao = "";
+
+    private static readonly string[] _etapasJornada = ["Recebido", "Em análise", "Validações", "Decisão"];
+
+    protected override void OnInitialized()
+    {
+        foreach (var v in ServicoMock.ObterValidacoes(Desembolso.Id).Where(v => v.ComentarioPreenchido is not null))
+            _comentarios[$"v{v.Numero}"] = [v.ComentarioPreenchido!];
+
+        if (SomenteLeitura)
+        {
+            // Revisão (DRP): abre nas validações e já expande as que têm comentário,
+            // para o histórico ficar visível de imediato.
+            _aba = "validacoes";
+            foreach (var chave in _comentarios.Keys)
+                _validacoesAbertas.Add(chave);
+        }
+        // abre a aba certa para o trabalho: com pendências, vai direto às validações
+        else if (Desembolso.Status is "pendencia")
+            _aba = "validacoes";
+    }
+
+    private int TotalComComentario => ObterValidacoesEfetivas()
+        .Count(v => ObterComentarios($"v{v.Numero}").Any()
+                 || v.SubItens.Any(s => ObterComentarios($"v{v.Numero}-{s.Numero}").Any()));
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            await _painelRef.FocusAsync();   // habilita Esc/setas sem clicar antes
+    }
+
+    // ── Teclado ───────────────────────────────────────────────────────────────
+    private async Task TratarTecla(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "Escape":     await FecharDialog(); break;
+            case "ArrowLeft":  await Anterior();     break;
+            case "ArrowRight": await Proximo();      break;
+        }
+    }
+
+    // ── Navegação ─────────────────────────────────────────────────────────────
+    private int IndiceAtual  => Todos.FindIndex(d => d.Id == Desembolso.Id);
+    private bool TemAnterior => IndiceAtual > 0;
+    private bool TemProximo  => IndiceAtual < Todos.Count - 1;
+
+    private async Task Anterior() { if (TemAnterior) await AoNavegar.InvokeAsync(Todos[IndiceAtual - 1].Id); }
+    private async Task Proximo()  { if (TemProximo)  await AoNavegar.InvokeAsync(Todos[IndiceAtual + 1].Id); }
+    private async Task FecharDialog() => await AoFechar.InvokeAsync();
+
+    // ── Copiar contrato ───────────────────────────────────────────────────────
+    private async Task CopiarContrato()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", Desembolso.Contrato);
+            _copiado = true;
+            StateHasChanged();
+            await Task.Delay(1600);
+            _copiado = false;
+        }
+        catch { /* clipboard indisponível (http) — silencioso */ }
+    }
+
+    // ── Anel de progresso (r=36 → circunferência ≈ 226.2) ────────────────────
+    private static string FormatarDash(double pct) =>
+        $"{(226.2 * pct).ToString("0.0", CultureInfo.InvariantCulture)} 226.2";
+
+    // ── Jornada ───────────────────────────────────────────────────────────────
+    private string EstadoEtapa(int indice)
+    {
+        var atual = Desembolso.Status switch
+        {
+            "aprovado"  => 4,   // tudo concluído
+            "agendado"  => 4,
+            "pendencia" => 2,   // travado nas validações
+            _           => 2    // pendente: analisando/validando
+        };
+        if (indice < atual) return indice == 2 && Desembolso.Status == "pendencia" ? "falha" : "concluida";
+        if (indice == atual) return "atual";
+        return "futura";
+    }
+
+    private void AlternarValidacao(string chave)
+    {
+        if (!_validacoesAbertas.Add(chave))
+            _validacoesAbertas.Remove(chave);
+    }
+
+    // ── Timeline de atividade ─────────────────────────────────────────────────
+    private record EventoTimeline(string Icone, string Texto, string Quando, string Tipo);
+
+    private List<EventoTimeline> MontarTimeline()
+    {
+        var cultura = new CultureInfo("pt-BR");
+        var criacao = Desembolso.PrazoFinal.AddDays(-21);
+        var eventos = new List<EventoTimeline>
+        {
+            new("bi-inbox", $"Desembolso <strong>{Desembolso.Id}</strong> recebido para análise",
+                criacao.ToString("dd MMM yyyy", cultura), "neutro"),
+        };
+
+        if (Analista is not null)
+            eventos.Add(new("bi-person-check", $"Atribuído a <strong>{Analista.Nome}</strong>",
+                criacao.AddDays(1).ToString("dd MMM yyyy", cultura), "info"));
+
+        foreach (var (chave, lista) in _comentarios)
+            foreach (var c in lista)
+                eventos.Add(new(
+                    c.Tipo == "positivo" ? "bi-check-circle" : c.Tipo == "negativo" ? "bi-x-circle" : "bi-chat-text",
+                    $"<strong>{c.Autor}</strong> comentou em <strong>{chave.ToUpper()}</strong>: “{c.Texto}”",
+                    ServicoMock.FormatarTempo(c.Timestamp), c.Tipo == "negativo" ? "falha" : c.Tipo == "positivo" ? "ok" : "info"));
+
+        eventos.Add(Desembolso.Status switch
+        {
+            "aprovado" => new("bi-patch-check", "Desembolso <strong>aprovado</strong>",
+                DateTime.Today.ToString("dd MMM yyyy", cultura), "ok"),
+            "pendencia" => new("bi-exclamation-triangle", "Pendências identificadas — <strong>aguardando tratativa</strong>",
+                "agora", "falha"),
+            _ => new("bi-hourglass-split", "Em análise — <strong>aguardando decisão</strong>", "agora", "neutro")
+        });
+
+        return eventos;
+    }
+
+    // ── Validações efetivas (mesma regra do dialog v1) ────────────────────────
+    private List<Validacao> ObterValidacoesEfetivas()
+    {
+        var validacoes = ServicoMock.ObterValidacoes(Desembolso.Id);
+        return validacoes.Select(v =>
+        {
+            var chave = $"v{v.Numero}";
+
+            var subEfetivos = v.SubItens.Select(sub =>
+            {
+                var chaveSub = $"{chave}-{sub.Numero}";
+                var temPositivo = _comentarios.TryGetValue(chaveSub, out var cs) && cs.Any(c => c.Tipo == "positivo");
+                var statusEfetivo = (sub.Status is "invalido" or "pendente" && temPositivo) ? "valido" : sub.Status;
+                return new SubValidacao { Numero = sub.Numero, Titulo = sub.Titulo, Status = statusEfetivo, Detalhe = sub.Detalhe };
+            }).ToList();
+
+            var status = v.Status;
+            if (v.SubItens.Any() && subEfetivos.All(s => s.Status == "valido"))
+                status = "valido";
+            else if (!v.SubItens.Any() && v.Status is "invalido" or "pendente"
+                     && _comentarios.TryGetValue(chave, out var comms) && comms.Any(c => c.Tipo == "positivo"))
+                status = "valido";
+
+            return new Validacao
+            {
+                Numero = v.Numero, Titulo = v.Titulo, Resultado = v.Resultado,
+                Status = status, Icone = v.Icone, Detalhe = v.Detalhe,
+                SubItens = subEfetivos, ComentarioPreenchido = v.ComentarioPreenchido
+            };
+        }).ToList();
+    }
+
+    private List<Comentario> ObterComentarios(string chave)
+    {
+        _comentarios.TryGetValue(chave, out var lista);
+        return lista ?? [];
+    }
+
+    private void AdicionarComentario(string chave, Comentario comentario)
+    {
+        if (!_comentarios.ContainsKey(chave))
+            _comentarios[chave] = [];
+        _comentarios[chave].Add(comentario);
+    }
+
+    // ── Ações (mesmos endpoints do dialog v1) ─────────────────────────────────
+    private async Task AprovarDesembolso()
+    {
+        _processandoAcao = true;
+        StateHasChanged();
+        try
+        {
+            var req = new { MatriculaUsuario = ServicoUsuario.Matricula, UsuarioNome = ServicoUsuario.Nome };
+            await Http.PutAsJsonAsync($"api/desembolso/{Desembolso.Id}/aprovar", req);
+        }
+        catch (Exception ex) { Console.WriteLine($"[DialogV2] Erro ao aprovar: {ex.Message}"); }
+        finally { _processandoAcao = false; }
+        await AoFechar.InvokeAsync();
+    }
+
+    private void CancelarRejeicao()
+    {
+        _modoRejeicao = false;
+        _codigoCoordenacao = "";
+    }
+
+    private async Task RejeitarDesembolso()
+    {
+        if (string.IsNullOrWhiteSpace(_codigoCoordenacao)) return;
+        _processandoAcao = true;
+        StateHasChanged();
+        try
+        {
+            var req = new { MatriculaUsuario = ServicoUsuario.Matricula, UsuarioNome = ServicoUsuario.Nome, CodigoCoordenacao = _codigoCoordenacao };
+            await Http.PutAsJsonAsync($"api/desembolso/{Desembolso.Id}/rejeitar", req);
+        }
+        catch (Exception ex) { Console.WriteLine($"[DialogV2] Erro ao rejeitar: {ex.Message}"); }
+        finally
+        {
+            _processandoAcao = false;
+            _modoRejeicao = false;
+            _codigoCoordenacao = "";
+        }
+        await AoFechar.InvokeAsync();
+    }
+
+    private async Task AtribuirAnalista(Funcionario f)
+    {
+        _popoverAberto = false;
+        await AoAtribuir.InvokeAsync(f);
+    }
+
+    private async Task RemoverAnalista()
+    {
+        _popoverAberto = false;
+        await AoAtribuir.InvokeAsync(null);
+    }
+}
+
+
+<style>
+/* ══════════════════════════════════════════════════════════════
+   DIALOG DETALHES V2 — drawer lateral
+   ══════════════════════════════════════════════════════════════ */
+
+/* Backdrop com blur sutil: escurece sem esconder o contexto */
+.v2-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(15, 23, 41, .32);
+    backdrop-filter: blur(2px);
+    z-index: 2000;
+    animation: fadeIn .18s ease;
+}
+
+/* Painel deslizante */
+.v2-painel {
+    position: fixed;
+    top: 0; right: 0; bottom: 0;
+    width: min(760px, calc(100vw - 48px));
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    box-shadow: -24px 0 64px rgba(0, 42, 77, .22);
+    z-index: 2001;
+    outline: none;
+    animation: v2Deslizar .26s cubic-bezier(.22, .61, .36, 1);
+}
+@@keyframes v2Deslizar {
+    from { transform: translateX(48px); opacity: 0; }
+    to   { transform: translateX(0);    opacity: 1; }
+}
+
+/* ── Topbar ── */
+.v2-topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--ink-100);
+    flex-shrink: 0;
+}
+.v2-nav-grupo {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    background: var(--ink-50);
+    border: 1px solid var(--ink-100);
+    border-radius: var(--radius-full);
+    padding: 2px;
+}
+.v2-btn-nav {
+    width: 26px; height: 26px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    color: var(--ink-700);
+    font-size: 12px;
+    transition: background .12s;
+}
+.v2-btn-nav:hover:not(:disabled) { background: #fff; box-shadow: var(--shadow-card); }
+.v2-btn-nav:disabled { opacity: .35; cursor: default; }
+.v2-nav-pos { font-size: 11px; color: var(--ink-500); padding: 0 6px; font-variant-numeric: tabular-nums; }
+
+.v2-topbar-dicas {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10.5px;
+    color: var(--ink-400, var(--ink-300));
+}
+.v2-kbd {
+    display: inline-block;
+    padding: 1px 5px;
+    border: 1px solid var(--ink-200);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    background: var(--ink-50);
+    font-size: 9.5px;
+    font-weight: 600;
+    color: var(--ink-500);
+}
+.v2-kbd.ml { margin-left: 10px; }
+
+.v2-btn-fechar {
+    width: 30px; height: 30px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: var(--radius-md);
+    color: var(--ink-500);
+    font-size: 14px;
+    transition: background .12s, color .12s;
+}
+.v2-btn-fechar:hover { background: var(--ink-50); color: var(--ink-900); }
+
+/* ── Hero ── */
+.v2-hero {
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+    padding: 20px 24px 16px;
+    background: linear-gradient(180deg, var(--ink-50), #fff);
+    flex-shrink: 0;
+}
+.v2-hero-info { flex: 1; min-width: 0; }
+
+.v2-hero-linha1 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.v2-hero-gigov {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    color: var(--brand-700);
+    background: var(--brand-50);
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+}
+.v2-btn-copiar {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    border-radius: var(--radius-md);
+    color: var(--ink-500);
+    font-size: 11px;
+    transition: background .12s, color .12s;
+}
+.v2-btn-copiar:hover { background: var(--ink-50); color: var(--ink-900); }
+.v2-btn-copiar.copiado { color: var(--ok); }
+.v2-contrato-mono {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 11.5px;
+    font-variant-numeric: tabular-nums;
+}
+
+.v2-hero-mutuario {
+    margin: 10px 0 6px;
+    font-size: 21px;
+    font-weight: 700;
+    letter-spacing: -.01em;
+    color: var(--ink-900);
+    line-height: 1.2;
+}
+
+.v2-hero-valor { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.v2-hero-valor-num {
+    font-size: 30px;
+    font-weight: 800;
+    letter-spacing: -.02em;
+    color: var(--brand-800);
+    font-variant-numeric: tabular-nums;
+}
+.v2-hero-valor-label { font-size: 11.5px; color: var(--ink-500); }
+
+.v2-hero-chips {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+}
+.v2-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 26px;
+    padding: 0 10px;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--ink-200);
+    background: #fff;
+    font-size: 11.5px;
+    color: var(--ink-700);
+}
+.v2-chip-prazo.atencao { border-color: #F5D0A0; background: var(--warn-bg, #FFEFD6); color: #9A5B00; }
+.v2-chip-prazo.critico { border-color: #F2B8B0; background: #FCE6E3; color: #9A2A1F; font-weight: 600; }
+.v2-chip-analista:hover, .v2-chip-atribuir:hover { background: var(--ink-50); cursor: pointer; }
+.v2-chip-atribuir { border-style: dashed; color: var(--ink-500); }
+
+.v2-avatar-mini {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    color: #fff;
+    font-size: 8px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+/* Anel de progresso */
+.v2-anel-wrap { position: relative; width: 92px; height: 92px; flex-shrink: 0; }
+.v2-anel { width: 100%; height: 100%; transform: rotate(-90deg); }
+.v2-anel-trilha { fill: none; stroke: var(--ink-100); stroke-width: 7; }
+.v2-anel-fill {
+    fill: none;
+    stroke: var(--ok);
+    stroke-width: 7;
+    stroke-linecap: round;
+    transition: stroke-dasharray .6s cubic-bezier(.22, .61, .36, 1);
+}
+.v2-anel-fill.tem-falha { stroke: var(--warn); }
+.v2-anel-centro {
+    position: absolute; inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    line-height: 1.15;
+}
+.v2-anel-num { font-size: 17px; font-weight: 800; color: var(--ink-900); font-variant-numeric: tabular-nums; }
+.v2-anel-total { font-size: 11px; font-weight: 600; color: var(--ink-400, var(--ink-300)); }
+.v2-anel-label { font-size: 8.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-500); }
+
+/* ── Jornada (stepper) ── */
+.v2-jornada {
+    display: flex;
+    padding: 0 24px 14px;
+    background: #fff;
+    flex-shrink: 0;
+}
+.v2-jornada-etapa {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+    gap: 8px;
+}
+.v2-jornada-etapa:last-child { flex: 0 0 auto; }
+.v2-jornada-ponto {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+    flex-shrink: 0;
+    border: 2px solid var(--ink-200);
+    color: var(--ink-400, var(--ink-300));
+    background: #fff;
+}
+.v2-jornada-etapa.concluida .v2-jornada-ponto { background: var(--ok); border-color: var(--ok); color: #fff; }
+.v2-jornada-etapa.falha     .v2-jornada-ponto { background: var(--err); border-color: var(--err); color: #fff; }
+.v2-jornada-etapa.atual     .v2-jornada-ponto {
+    border-color: var(--brand-500);
+    color: var(--brand-700);
+    box-shadow: 0 0 0 4px var(--brand-50);
+}
+.v2-jornada-nome { font-size: 11px; color: var(--ink-500); white-space: nowrap; }
+.v2-jornada-etapa.atual .v2-jornada-nome { color: var(--ink-900); font-weight: 600; }
+.v2-jornada-etapa.falha .v2-jornada-nome { color: var(--err); font-weight: 600; }
+.v2-jornada-linha {
+    flex: 1;
+    height: 2px;
+    background: var(--ink-100);
+    border-radius: 2px;
+    margin: 0 6px;
+    min-width: 12px;
+}
+.v2-jornada-linha.cheia { background: var(--ok); }
+
+/* ── Abas ── */
+.v2-tabs {
+    display: flex;
+    gap: 2px;
+    padding: 0 24px;
+    border-bottom: 1px solid var(--ink-100);
+    flex-shrink: 0;
+}
+.v2-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 12px;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--ink-500);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: color .12s, border-color .12s;
+}
+.v2-tab:hover { color: var(--ink-900); }
+.v2-tab.ativa {
+    color: var(--brand-700);
+    font-weight: 600;
+    border-bottom-color: var(--brand-700);
+}
+.v2-tab-badge {
+    min-width: 17px; height: 17px;
+    padding: 0 5px;
+    border-radius: var(--radius-full);
+    background: var(--warn-bg, #FFEFD6);
+    color: #9A5B00;
+    font-size: 10px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.v2-tab-badge.falha { background: #FCE6E3; color: var(--err); }
+
+/* ── Conteúdo ── */
+.v2-conteudo {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 24px;
+    background: var(--ink-50);
+}
+.v2-conteudo::-webkit-scrollbar { width: 8px; }
+
+/* Cards financeiros */
+.v2-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 16px;
+}
+.v2-stat {
+    background: #fff;
+    border: 1px solid var(--ink-100);
+    border-radius: var(--radius-lg);
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    box-shadow: var(--shadow-card);
+}
+.v2-stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-500); font-weight: 600; }
+.v2-stat-num { font-size: 15px; font-weight: 700; color: var(--ink-900); font-variant-numeric: tabular-nums; }
+
+/* Seções */
+.v2-secao {
+    background: #fff;
+    border: 1px solid var(--ink-100);
+    border-radius: var(--radius-lg);
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    box-shadow: var(--shadow-card);
+}
+.v2-secao-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+.v2-secao-titulo { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-500); font-weight: 700; }
+.v2-secao-valor  { font-size: 14px; font-weight: 800; color: var(--brand-800); font-variant-numeric: tabular-nums; }
+.v2-secao-sub    { font-size: 10.5px; color: var(--ink-400, var(--ink-300)); display: block; margin-top: 6px; }
+
+.v2-barra {
+    height: 8px;
+    background: var(--ink-100);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+}
+.v2-barra-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--brand-500), var(--brand-700));
+    border-radius: var(--radius-full);
+    transition: width .6s cubic-bezier(.22, .61, .36, 1);
+}
+
+.v2-dados-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px 24px;
+}
+.v2-dado {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--ink-50);
+    font-size: 12px;
+}
+.v2-dado span   { color: var(--ink-500); flex-shrink: 0; }
+.v2-dado strong { color: var(--ink-900); font-weight: 600; text-align: right; }
+
+/* Alerta de pendências (visão geral) */
+.v2-alerta-pendencias {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 12px 16px;
+    border: 1px solid #F2B8B0;
+    border-radius: var(--radius-lg);
+    background: #FEF5F4;
+    color: #9A2A1F;
+    font-size: 12.5px;
+    text-align: left;
+    transition: background .12s, transform .12s;
+}
+.v2-alerta-pendencias:hover { background: #FCE6E3; transform: translateX(2px); }
+.v2-alerta-pendencias span { flex: 1; }
+.v2-alerta-pendencias i:first-child { font-size: 15px; }
+
+/* ── Validações ── */
+.v2-filtros {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+}
+.v2-filtro {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 26px;
+    padding: 0 10px;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--ink-200);
+    background: #fff;
+    font-size: 11.5px;
+    color: var(--ink-700);
+    transition: all .12s;
+}
+.v2-filtro span {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--ink-500);
+}
+.v2-filtro:hover { border-color: var(--ink-300); }
+.v2-filtro.ativo         { background: var(--ink-900); border-color: var(--ink-900); color: #fff; }
+.v2-filtro.ativo span    { color: rgba(255,255,255,.75); }
+.v2-filtro.falha.ativo   { background: var(--err); border-color: var(--err); }
+.v2-filtro.atencao.ativo { background: var(--warn); border-color: var(--warn); }
+.v2-filtro.ok.ativo      { background: var(--ok);  border-color: var(--ok); }
+
+.v2-val {
+    background: #fff;
+    border: 1px solid var(--ink-100);
+    border-left: 3px solid var(--ink-200);
+    border-radius: var(--radius-lg);
+    margin-bottom: 8px;
+    overflow: hidden;
+    box-shadow: var(--shadow-card);
+}
+.v2-val.invalido { border-left-color: var(--err); }
+.v2-val.pendente { border-left-color: var(--warn); }
+.v2-val.valido   { border-left-color: var(--ok); }
+
+.v2-val-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 11px 14px;
+    text-align: left;
+    transition: background .12s;
+}
+.v2-val-header:hover { background: var(--ink-50); }
+.v2-val-num {
+    font-size: 10px;
+    font-weight: 800;
+    color: var(--ink-400, var(--ink-300));
+    font-variant-numeric: tabular-nums;
+}
+.v2-val-titulo { flex: 1; font-size: 12.5px; font-weight: 600; color: var(--ink-900); }
+.v2-val-comm { font-size: 11px; color: var(--brand-500); }
+.v2-val-chevron { font-size: 11px; color: var(--ink-400, var(--ink-300)); transition: transform .2s; }
+.v2-val.aberta .v2-val-chevron { transform: rotate(180deg); }
+
+.v2-val-corpo { padding: 0 14px 14px; }
+.v2-val-detalhe {
+    font-size: 12px;
+    color: var(--ink-700);
+    line-height: 1.55;
+    margin: 0 0 12px;
+    padding: 10px 12px;
+    background: var(--ink-50);
+    border-radius: var(--radius-md);
+}
+
+.v2-sub {
+    border: 1px solid var(--ink-100);
+    border-radius: var(--radius-md);
+    padding: 10px 12px;
+    margin-bottom: 8px;
+}
+.v2-sub.invalido { background: #FFFAFA; border-color: #F6D5D0; }
+.v2-sub.pendente { background: #FFFDF7; border-color: #F2E3C4; }
+.v2-sub-header { display: flex; align-items: center; gap: 8px; }
+.v2-sub-num { font-size: 10px; font-weight: 700; color: var(--ink-500); font-variant-numeric: tabular-nums; }
+.v2-sub-titulo { flex: 1; font-size: 12px; font-weight: 600; color: var(--ink-900); }
+.v2-sub-detalhe { font-size: 11.5px; color: var(--ink-700); margin: 8px 0 0; line-height: 1.5; }
+.v2-sub .fio-comentario { margin-top: 8px; }
+
+.v2-vazio {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 32px 0;
+    color: var(--ink-400, var(--ink-300));
+    font-size: 12px;
+}
+.v2-vazio i { font-size: 26px; }
+
+/* ── Timeline ── */
+.v2-timeline { position: relative; padding-left: 6px; }
+.v2-evento {
+    display: flex;
+    gap: 12px;
+    padding-bottom: 18px;
+    position: relative;
+}
+.v2-evento::before {
+    content: "";
+    position: absolute;
+    left: 13px; top: 28px; bottom: 0;
+    width: 2px;
+    background: var(--ink-100);
+}
+.v2-evento:last-child::before { display: none; }
+.v2-evento-ponto {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: #fff;
+    border: 1px solid var(--ink-200);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    color: var(--ink-500);
+    flex-shrink: 0;
+    z-index: 1;
+}
+.v2-evento.ok    .v2-evento-ponto { border-color: var(--ok);  color: var(--ok);  background: var(--ok-bg); }
+.v2-evento.falha .v2-evento-ponto { border-color: var(--err); color: var(--err); background: var(--err-bg); }
+.v2-evento.info  .v2-evento-ponto { border-color: var(--brand-300); color: var(--brand-700); background: var(--brand-50); }
+.v2-evento-corpo { flex: 1; padding-top: 3px; }
+.v2-evento-texto { font-size: 12.5px; color: var(--ink-700); line-height: 1.5; }
+.v2-evento-quando { font-size: 10.5px; color: var(--ink-400, var(--ink-300)); margin-top: 3px; }
+
+/* ── Rodapé ── */
+.v2-rodape {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 24px;
+    border-top: 1px solid var(--ink-100);
+    background: #fff;
+    flex-shrink: 0;
+}
+.v2-rodape-status {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--ink-500);
+    min-width: 0;
+}
+.v2-revisao-nota { display: flex; align-items: center; gap: 6px; padding: 9px 12px; margin-bottom: 12px; border: 1px solid var(--brand-200); background: var(--brand-50); border-radius: var(--radius-md); font-size: 12px; color: var(--brand-800); }
+.v2-revisao-nota i { color: var(--brand-700); }
+.v2-rodape-status .ok      { color: var(--ok); }
+.v2-rodape-status .falha   { color: var(--err); }
+.v2-rodape-status .atencao { color: var(--warn); }
+
+.v2-btn-recusar {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 16px;
+    border: 1px solid #F2B8B0;
+    border-radius: var(--radius-md);
+    background: #fff;
+    color: var(--err);
+    font-size: 12.5px;
+    font-weight: 600;
+    transition: background .12s;
+}
+.v2-btn-recusar:hover:not(:disabled) { background: #FEF5F4; }
+
+.v2-btn-aprovar {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 20px;
+    border-radius: var(--radius-md);
+    background: var(--ok);
+    color: #fff;
+    font-size: 12.5px;
+    font-weight: 700;
+    transition: background .12s, opacity .12s;
+}
+.v2-btn-aprovar:hover:not(:disabled) { background: #145f38; }
+.v2-btn-aprovar:disabled { opacity: .45; cursor: not-allowed; }
+
+.v2-btn-secundario {
+    padding: 9px 16px;
+    border: 1px solid var(--ink-200);
+    border-radius: var(--radius-md);
+    background: #fff;
+    color: var(--ink-500);
+    font-size: 12.5px;
+}
+.v2-btn-secundario:hover { background: var(--ink-50); }
+
+.v2-input-coord {
+    flex: 1;
+    height: 38px;
+    padding: 0 12px;
+    border: 1px solid var(--ink-200);
+    border-radius: var(--radius-md);
+    font-size: 12.5px;
+    font-family: inherit;
+}
+.v2-input-coord:focus { outline: none; border-color: var(--brand-500); }
+
+/* Popover de atribuição */
+.v2-popover {
+    position: absolute;
+    top: 190px; left: 24px;
+    width: 240px;
+    background: #fff;
+    border: 1px solid var(--ink-200);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-pop);
+    z-index: 10;
+    overflow: hidden;
+    animation: fadeIn .12s ease;
+}
+.v2-popover-titulo {
+    padding: 10px 14px 8px;
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--ink-500);
+    border-bottom: 1px solid var(--ink-100);
+}
+.v2-popover-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 9px 14px;
+    font-size: 12.5px;
+    color: var(--ink-900);
+    text-align: left;
+    transition: background .1s;
+}
+.v2-popover-item:hover { background: var(--ink-50); }
+.v2-popover-remover {
+    width: 100%;
+    padding: 9px 14px;
+    font-size: 12px;
+    color: var(--err);
+    text-align: left;
+    border-top: 1px solid var(--ink-100);
+}
+.v2-popover-remover:hover { background: #FEF5F4; }
+
+.spinner { animation: girar .8s linear infinite; display: inline-block; }
+
+/* Responsivo */
+@@media (max-width: 720px) {
+    .v2-painel { width: 100vw; }
+    .v2-stats { grid-template-columns: 1fr; }
+    .v2-dados-grid { grid-template-columns: 1fr; }
+    .v2-anel-wrap { display: none; }
+    .v2-topbar-dicas { display: none; }
+}
+</style>

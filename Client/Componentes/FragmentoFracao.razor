@@ -1,0 +1,43 @@
+<div class="fracao-wrapper">
+    <div class="fracao-barra">
+        <div class="fracao-preenchimento" style="width: @(Percentual)%"></div>
+    </div>
+    <span class="fracao-texto">@Ok<span class="fracao-sep">/</span>@Total</span>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public int Ok    { get; set; }
+    [Parameter, EditorRequired] public int Total { get; set; }
+
+    private double Percentual => Total > 0 ? Math.Round((double)Ok / Total * 100, 1) : 0;
+}
+
+
+<style>
+.fracao-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.fracao-barra {
+    width: 48px;
+    height: 4px;
+    background: var(--ink-100);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+    flex-shrink: 0;
+}
+.fracao-preenchimento {
+    height: 100%;
+    background: var(--ok);
+    border-radius: var(--radius-full);
+    transition: width .3s ease;
+}
+.fracao-texto {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-700);
+    white-space: nowrap;
+}
+.fracao-sep { color: var(--ink-300); margin: 0 1px; }
+</style>

@@ -1,0 +1,121 @@
+@* ══════════════════════════════════════════════════════════════════════════
+   BARRA DE PROGRESSO GLOBAL — mostra o andamento de QUALQUER automação.
+
+   Consome o evento AoReceberProgressoGlobal do SignalRService (transporte),
+   que dispara para toda chave com escuta ativa — a barra não precisa conhecer
+   a chave da operação. Progresso é assunto do SignalRService, não do
+   ServicoNotificacao (que cuida só das notificações do sino).
+   ══════════════════════════════════════════════════════════════════════════ *@
+@using PlataformaOperacional.Model.Plataforma
+@using PlataformaOperacional.Service.Middleware
+@inject SignalRService SignalR
+@implements IDisposable
+
+@if (_visivel)
+{
+    <div class="bp-wrapper">
+        <div class="bp-content">
+            <div class="bp-topo">
+                <div class="bp-esquerda">
+                    <span class="bp-nome">@_estado.NomeProcesso</span>
+                    <span class="bp-fase">Fase @_estado.NumeroFaseAtual</span>
+                    <span class="bp-msg">@_estado.Mensagem</span>
+                </div>
+                <div class="bp-direita">
+                    <span class="bp-pct">@_estado.PercentualProcessado%</span>
+                    <span class="bp-contagem">@_estado.TotalProcessado / @_estado.TotalAProcessar</span>
+                </div>
+            </div>
+            <div class="bp-track">
+                <div class="bp-fill @(_estado.PercentualProcessado >= 100 ? "bp-fill-ok" : "bp-fill-ativo")"
+                     style="width: @(_estado.PercentualProcessado)%"></div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private ObservadorAutomacao _estado = new();
+    private bool _visivel = false;
+    private CancellationTokenSource? _cts;
+
+    protected override void OnInitialized()
+    {
+        SignalR.AoReceberProgressoGlobal += OnProgresso;
+    }
+
+    private void OnProgresso(string chave, ObservadorAutomacao obs)
+    {
+        _cts?.Cancel();
+        _estado  = obs;
+        _visivel = true;
+
+        if (obs.PercentualProcessado >= 100)
+        {
+            _cts = new CancellationTokenSource();
+            _ = OcultarAsync(_cts.Token);
+        }
+
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OcultarAsync(CancellationToken ct)
+    {
+        await Task.Delay(2500, ct);
+        if (!ct.IsCancellationRequested)
+        {
+            _visivel = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public void Dispose()
+    {
+        SignalR.AoReceberProgressoGlobal -= OnProgresso;
+        _cts?.Cancel();
+    }
+}
+
+<style>
+    .bp-wrapper {
+        background: #f0f7ff;
+        border-top: 1px solid #dbeafe;
+        border-bottom: 1px solid #dbeafe;
+        padding: 10px 0;
+        animation: bp-slide-in 0.2s ease;
+    }
+
+    @@keyframes bp-slide-in {
+        from { opacity: 0; transform: translateY(-6px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .bp-content { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+
+    .bp-topo {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 6px;
+    }
+
+    .bp-esquerda { display: flex; align-items: center; gap: 8px; }
+    .bp-nome { font-size: 12px; font-weight: 600; color: #005CA9; }
+    .bp-fase { font-size: 11px; background: #dbeafe; color: #005CA9; padding: 1px 6px; border-radius: 100px; font-weight: 500; }
+    .bp-msg  { font-size: 11px; color: #6b7280; }
+
+    .bp-direita { display: flex; align-items: center; gap: 8px; }
+    .bp-pct { font-size: 12px; font-weight: 700; color: #005CA9; min-width: 32px; text-align: right; }
+    .bp-contagem { font-size: 11px; color: #9ca3af; }
+
+    .bp-track { height: 5px; background: #dbeafe; border-radius: 100px; overflow: hidden; }
+
+    .bp-fill { height: 100%; border-radius: 100px; transition: width 0.45s cubic-bezier(0.4, 0, 0.2, 1); }
+    .bp-fill-ativo { background: #005CA9; animation: bp-pulse 1.5s ease-in-out infinite; }
+    .bp-fill-ok    { background: #1A7A4A; animation: none; }
+
+    @@keyframes bp-pulse {
+        0%, 100% { opacity: 1; }
+        50%      { opacity: 0.75; }
+    }
+</style>

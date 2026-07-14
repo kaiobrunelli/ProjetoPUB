@@ -1,0 +1,127 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   SIPUB — BASE GLOBAL PARA O PORTE (variáveis + utilitários)
+
+   Como usar no ORIGINAL:
+     1. Copie este arquivo para wwwroot/css/sipub-base.css
+     2. Linke no index.html, DEPOIS do css principal do app:
+          <link rel="stylesheet" href="css/sipub-base.css" />
+     3. Garanta também o bundle de CSS isolado no index.html:
+          <link href="SEU_PROJETO.styles.css" rel="stylesheet" />
+
+   Contém APENAS o que os .razor.css portados consomem:
+     • variáveis :root (cores, raios, sombras, fonte)
+     • keyframes compartilhados
+     • utilitários globais (.skeleton, .spinner, .acc-body do acordeão)
+   NÃO contém resets nem estilos de html/body — não interfere no MudBlazor.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Marca (azuis Caixa) ── */
+  --brand-900: #002A4D;
+  --brand-800: #00437A;
+  --brand-700: #005CA9;
+  --brand-500: #2D8AD8;
+  --brand-300: #6DBAFA;
+  --brand-200: #A0D2FC;
+  --brand-100: #CFE3F8;
+  --brand-50:  #E5F1FC;
+
+  /* ── Laranja Caixa ── */
+  --amber-700: #A65E00;
+  --amber-600: #D87B00;
+  --amber-500: #F39200;
+  --amber-400: #FDB548;
+  --amber-50:  #FFEFD6;
+
+  /* ── Neutros ── */
+  --ink-900: #22292E;
+  --ink-700: #404B52;
+  --ink-500: #64747A;
+  --ink-400: #8FA2AA;
+  --ink-300: #9EB2BB;
+  --ink-200: #D0E0E3;
+  --ink-100: #EBF1F2;
+  --ink-50:  #F7FAFA;
+
+  /* ── Semânticas ── */
+  --ok:      #1A7A4A;
+  --err:     #C0392B;
+  --warn:    #D87B00;
+  --ok-bg:   #E0F2E7;
+  --err-bg:  #FCE6E3;
+  --warn-bg: #FFEFD6;
+
+  /* ── Sombras ── */
+  --shadow-card: 0 1px 2px rgba(34,41,46,.04), 0 1px 3px rgba(34,41,46,.06);
+  --shadow-pop:  0 8px 24px rgba(0,67,122,.10), 0 2px 6px rgba(34,41,46,.06);
+
+  /* ── Fonte: CAIXA Std (requer o @font-face do projeto original) ── */
+  --font: 'CAIXA Std', Arial, system-ui, sans-serif;
+  --font-mono: 'CAIXA Std', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* ── Métricas ── */
+  --topbar-h: 64px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+}
+
+/* ── Keyframes compartilhados pelos .razor.css portados ── */
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position:  400px 0; }
+}
+@keyframes girar {
+  to { transform: rotate(360deg); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes popIn {
+  from { opacity: 0; transform: scale(.97) translateY(4px); }
+  to   { opacity: 1; transform: scale(1)   translateY(0);   }
+}
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Utilitários globais usados pelas páginas/dialogs portados ── */
+.skeleton {
+  background: linear-gradient(90deg, var(--ink-100) 0%, var(--ink-50) 50%, var(--ink-100) 100%);
+  background-size: 800px 100%;
+  animation: shimmer 1.4s infinite linear;
+  border-radius: var(--radius-md);
+}
+
+.spinner { animation: girar 0.8s linear infinite; display: inline-block; }
+
+/* Acordeão dos grupos de contratos (animação de expandir/recolher) */
+.acc-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 280ms cubic-bezier(.22,.61,.36,1);
+}
+.acc-body.aberto { grid-template-rows: 1fr; }
+.acc-body > .acc-inner { overflow: hidden; }
+
+/* ── Largura das telas do SIPUB ──
+   O MudContainer "Medium" do layout limita a 960px; as telas do SIPUB foram
+   desenhadas para 1400px. Abre o container APENAS quando a página do SIPUB
+   (.pagina) está dentro dele — as demais telas do sistema ficam intocadas.
+   Requer navegador 2022+ (:has). */
+.mud-container:has(.pagina) {
+    max-width: 1400px !important;
+}
+
+/* ── Fonte nas páginas portadas ──
+   Aplica CAIXA Std só dentro das telas do SIPUB, sem tocar no resto do app.
+   (Os .razor.css usam font-family: inherit — herdam daqui.) */
+.pagina,
+.dialog-fpd, .overlay-fpd,
+.v2-painel {
+  font-family: var(--font);
+}

@@ -1,0 +1,183 @@
+@using PlataformaNotificacao.Domain
+@using PlataformaNotificacao.Domain.DTO
+@using PlataformaNotificacao.Domain.Enum
+
+<div class="overlay-confirmacao" @onclick="AoCancelar"></div>
+
+<div class="dialog-confirmacao" @onclick:stopPropagation>
+
+    <div class="dialog-confirmacao-header">
+        <div class="dialog-confirmacao-icone">
+            <i class="bi bi-shield-exclamation"></i>
+        </div>
+        <div>
+            <div class="dialog-confirmacao-titulo">Leitura obrigatória</div>
+            <div class="dialog-confirmacao-subtitulo">Esta notificação requer confirmação explícita</div>
+        </div>
+        <button class="dialog-confirmacao-fechar" @onclick="AoCancelar">
+            <i class="bi bi-x-lg"></i>
+        </button>
+    </div>
+
+    <div class="dialog-confirmacao-corpo">
+        <div class="dialog-confirmacao-tipo tipo-@Notificacao.Tipo.ToString().ToLower()">
+            <i class="bi @IconePorTipo(Notificacao.Tipo)"></i>
+            <span>@LabelTipo(Notificacao.Tipo)</span>
+            @if (Notificacao.CodigoAplicativo.HasValue)
+            {
+                <span class="dialog-confirmacao-modulo">@Notificacao.CodigoAplicativo</span>
+            }
+        </div>
+        <h3 class="dialog-confirmacao-notif-titulo">@Notificacao.Titulo</h3>
+        <p class="dialog-confirmacao-notif-descricao">@Notificacao.Mensagem</p>
+        <div class="dialog-confirmacao-data">
+            Recebida em @Notificacao.DataCriacao.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+        </div>
+    </div>
+
+    <div class="dialog-confirmacao-rodape">
+        <p class="dialog-confirmacao-aviso">
+            <i class="bi bi-info-circle"></i>
+            Ao confirmar, registramos que você leu e está ciente desta notificação.
+        </p>
+        <div class="dialog-confirmacao-acoes">
+            <button class="btn-cancelar-confirmacao" @onclick="AoCancelar">Fechar sem confirmar</button>
+            <button class="btn-confirmar-leitura" @onclick="AoConfirmar">
+                <i class="bi bi-check2-circle"></i>
+                Confirmo que li e estou ciente
+            </button>
+        </div>
+    </div>
+</div>
+
+<style>
+    .overlay-confirmacao {
+        position: fixed; inset: 0;
+        background: rgba(0,0,0,.45);
+        z-index: 2000;
+    }
+
+    .dialog-confirmacao {
+        position: fixed;
+        top: 50%; left: 50%;
+        transform: translate(-50%, -50%);
+        width: min(520px, calc(100vw - 32px));
+        background: #fff;
+        border: 1px solid var(--ink-100);
+        border-radius: var(--radius-xl);
+        box-shadow: 0 24px 60px rgba(0,0,0,.25);
+        z-index: 2001;
+        overflow: hidden;
+    }
+
+    .dialog-confirmacao-header {
+        display: flex; align-items: center; gap: 12px;
+        padding: 20px 24px 16px;
+        border-bottom: 1px solid var(--ink-100);
+        background: var(--ink-50);
+    }
+
+    .dialog-confirmacao-icone {
+        width: 40px; height: 40px;
+        background: #FEF2F2;
+        border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        color: #C0392B; font-size: 18px; flex-shrink: 0;
+    }
+
+    .dialog-confirmacao-titulo { font-size: 15px; font-weight: 600; color: var(--ink-900); }
+    .dialog-confirmacao-subtitulo { font-size: 12px; color: var(--ink-500); margin-top: 2px; }
+
+    .dialog-confirmacao-fechar {
+        margin-left: auto;
+        background: none; border: none; cursor: pointer;
+        color: var(--ink-500); font-size: 16px; padding: 4px;
+    }
+    .dialog-confirmacao-fechar:hover { color: var(--ink-900); }
+
+    .dialog-confirmacao-corpo { padding: 24px; }
+
+    .dialog-confirmacao-tipo {
+        display: inline-flex; align-items: center; gap: 6px;
+        font-size: 11px; font-weight: 600; letter-spacing: .5px;
+        padding: 4px 10px; border-radius: 99px;
+        margin-bottom: 14px;
+    }
+    .tipo-normal  { background: #EBF5FF; color: #005CA9; }
+    .tipo-alerta  { background: #FFFBEB; color: #D87B00; }
+    .tipo-urgente { background: #FEF2F2; color: #C0392B; }
+
+    .dialog-confirmacao-modulo {
+        background: rgba(0,0,0,.08);
+        border-radius: 99px; padding: 2px 8px;
+        font-size: 10px; font-weight: 500;
+    }
+
+    .dialog-confirmacao-notif-titulo {
+        font-size: 17px; font-weight: 600; color: var(--ink-900);
+        margin: 0 0 10px;
+    }
+
+    .dialog-confirmacao-notif-descricao {
+        font-size: 14px; color: var(--ink-500); line-height: 1.6;
+        margin: 0 0 16px;
+    }
+
+    .dialog-confirmacao-data {
+        font-size: 12px; color: var(--ink-500);
+        border-top: 1px solid var(--ink-100); padding-top: 12px;
+    }
+
+    .dialog-confirmacao-rodape {
+        padding: 16px 24px 20px;
+        background: var(--ink-50);
+        border-top: 1px solid var(--ink-100);
+    }
+
+    .dialog-confirmacao-aviso {
+        font-size: 12px; color: var(--ink-500);
+        display: flex; align-items: flex-start; gap: 6px;
+        margin: 0 0 16px;
+    }
+    .dialog-confirmacao-aviso i { margin-top: 2px; flex-shrink: 0; }
+
+    .dialog-confirmacao-acoes {
+        display: flex; gap: 10px; justify-content: flex-end;
+    }
+
+    .btn-cancelar-confirmacao {
+        background: none; border: 1px solid var(--ink-200);
+        border-radius: var(--radius-md); padding: 8px 16px;
+        font-size: 13px; cursor: pointer; color: var(--ink-500);
+    }
+    .btn-cancelar-confirmacao:hover { background: var(--ink-100); }
+
+    .btn-confirmar-leitura {
+        display: flex; align-items: center; gap: 6px;
+        background: #1A7A4A; color: #fff;
+        border: none; border-radius: var(--radius-md);
+        padding: 8px 18px; font-size: 13px; font-weight: 600;
+        cursor: pointer;
+    }
+    .btn-confirmar-leitura:hover { background: #145f38; }
+</style>
+
+@code {
+    [Parameter, EditorRequired] public NotificacaoDto Notificacao { get; set; } = null!;
+    [Parameter, EditorRequired] public EventCallback   AoConfirmar { get; set; }
+    [Parameter, EditorRequired] public EventCallback   AoCancelar  { get; set; }
+
+    private static string LabelTipo(TipoNotificacao tipo) => tipo switch
+    {
+        TipoNotificacao.Urgente => "URGENTE",
+        TipoNotificacao.Alerta  => "ALERTA",
+        _                       => "NORMAL"
+    };
+
+    private static string IconePorTipo(TipoNotificacao tipo) => tipo switch
+    {
+        TipoNotificacao.Alerta  => "bi-exclamation-triangle-fill",
+        TipoNotificacao.Urgente => "bi-shield-exclamation",
+        _                       => "bi-bell-fill"
+    };
+}

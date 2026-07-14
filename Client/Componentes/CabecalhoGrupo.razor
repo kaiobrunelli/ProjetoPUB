@@ -1,0 +1,76 @@
+<button class="grupo-cabecalho" @onclick="Alternar">
+    <i class="bi bi-chevron-@(Aberto ? "down" : "right") grupo-chevron"></i>
+    <span class="grupo-icone-status grupo-dot-@Tipo"></span>
+    <span class="grupo-titulo">@Titulo</span>
+    <span class="grupo-contagem grupo-contagem-@Tipo">@Contagem</span>
+</button>
+
+@code {
+    [Parameter, EditorRequired] public string Titulo   { get; set; } = "";
+    [Parameter, EditorRequired] public int    Contagem { get; set; }
+    [Parameter, EditorRequired] public string Tipo     { get; set; } = ""; // pendencia | pendente | aprovado
+    [Parameter] public bool Aberto { get; set; } = true;
+    [Parameter] public EventCallback<bool> AoAlternar { get; set; }
+
+    private async Task Alternar()
+    {
+        Aberto = !Aberto;
+        await AoAlternar.InvokeAsync(Aberto);
+    }
+}
+
+
+<style>
+/* O card wrapper fica em PaginaAnalise; este componente é só o conteúdo interno do header */
+.grupo-cabecalho {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    user-select: none;
+}
+
+.grupo-chevron {
+    font-size: 13px;
+    color: var(--ink-300);
+    flex-shrink: 0;
+    transition: transform .2s;
+}
+
+.grupo-icone-status {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.grupo-dot-pendencia { background: #C0392B; }
+.grupo-dot-pendente  { background: #D87B00; }
+.grupo-dot-aprovado  { background: #1A7A4A; }
+
+.grupo-titulo {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--ink-900);
+}
+
+/* Badge colorido por tipo (mesmo esquema de PilulhaStatus) */
+.grupo-contagem {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-full);
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+.grupo-contagem-pendencia { background: #FCE6E3; color: #9A2A1F; }
+.grupo-contagem-pendente  { background: #FFEFD6; color: #663A00; }
+.grupo-contagem-aprovado  { background: #E0F2E7; color: #1A7A4A; }
+</style>

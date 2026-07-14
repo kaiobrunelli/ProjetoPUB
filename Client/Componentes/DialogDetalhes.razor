@@ -1,0 +1,1511 @@
+@inject IJSRuntime JS
+@inject HttpClient Http
+@inject ServicoUsuario ServicoUsuario
+@using System.Net.Http.Json
+
+<div class="overlay-dialog" @onclick="FecharDialog">
+    <div class="dialog" @onclick:stopPropagation role="dialog" aria-modal="true">
+
+        <!-- ── TOP BAR ── -->
+        <div class="dialog-topbar">
+            <div class="dialog-id">
+                <i class="bi bi-file-text"></i>
+                <span class="dialog-id-label">Desembolso ID</span>
+                <span class="dialog-id-num">@Desembolso.NumId</span>
+            </div>
+            <div class="dialog-topbar-right">
+                <!-- nav pill-group -->
+                <div class="nav-pill-group">
+                    <button class="btn-nav" @onclick="Anterior" disabled="@(!TemAnterior)" title="Anterior">
+                        <i class="bi bi-chevron-left"></i>
+                    </button>
+                    <span class="nav-pos">@(IndiceAtual + 1)/@Todos.Count</span>
+                    <button class="btn-nav" @onclick="Proximo" disabled="@(!TemProximo)" title="Próximo">
+                        <i class="bi bi-chevron-right"></i>
+                    </button>
+                </div>
+                <button class="btn-fechar" @onclick="FecharDialog" title="Fechar (Esc)">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+        </div>
+
+        @{
+            var detalhe = ServicoMock.ObterDetalheContrato(Desembolso);
+            var validacoesEfetivas = ObterValidacoesEfetivas();
+            var totalValidas   = validacoesEfetivas.Count(v => v.Status == "valido");
+            var totalInvalidas = validacoesEfetivas.Count(v => v.Status == "invalido");
+            var totalPendentes = validacoesEfetivas.Count(v => v.Status == "pendente");
+            var analisadas = totalValidas + totalInvalidas;
+            var pct = validacoesEfetivas.Count > 0 ? (double)analisadas / validacoesEfetivas.Count * 100 : 0;
+        }
+
+        <!-- ── REPORT HEADER — bg #F8FAFC ── -->
+        <div class="dialog-header">
+
+            <!-- Linha título: mutuário + id + gigov + ações -->
+            <div class="header-titulo-row">
+                <div class="header-titulo-left">
+                    <div class="header-name-row">
+                        <h2 class="header-mutuario">@Desembolso.Mutuario</h2>
+                        <span class="header-dsb-id">@Desembolso.Id</span>
+                        @if (!string.IsNullOrEmpty(Desembolso.Gigov))
+                        {
+                            <span class="header-gigov">@Desembolso.Gigov</span>
+                        }
+                    </div>
+                    <div class="header-meta-row">
+                        @if (Analista is not null)
+                        {
+                            <div class="analista-mini" style="background: @Analista.Cor">@Analista.Iniciais</div>
+                            <span class="header-analista-nome">@Analista.Nome</span>
+                        }
+                        <span class="header-prazo-chip">
+                            <i class="bi bi-calendar3"></i>
+                            Prazo:&nbsp;<strong>@Desembolso.PrazoFinal.ToString("dd MMM", new System.Globalization.CultureInfo("pt-BR"))</strong>
+                        </span>
+                        <PilulhaStatus Status="@Desembolso.Status" Tamanho="sm" />
+                    </div>
+                </div>
+                <div class="header-acoes">
+                    <button class="btn-vincular" @onclick="() => _popoverAberto = !_popoverAberto">
+                        <i class="bi bi-person"></i>
+                        @(Analista is null ? "Vincular" : "Alterar vínculo")
+                        <i class="bi bi-chevron-down btn-chevron"></i>
+                    </button>
+                    <button class="btn-remover-vinculo @(Analista is null ? "btn-remover-desativo" : "")"
+                            @onclick="RemoverAnalista" disabled="@(Analista is null)">
+                        <i class="bi bi-x-lg"></i> Remover vínculo
+                    </button>
+                    <button class="btn-validar">
+                        <i class="bi bi-arrow-clockwise"></i> Validar
+                    </button>
+                </div>
+            </div>
+
+            <!-- Grid 2 colunas de dados -->
+            <div class="header-dados-grid">
+                <div class="dados-coluna">
+                    <div class="dados-secao-titulo">Identificação do Contrato</div>
+                    <div class="dado-linha">
+                        <span class="dado-rotulo">Contrato</span>
+                        <span class="dado-valor dado-valor-link dado-mono">@Desembolso.Contrato</span>
+                    </div>
+                    <div class="dado-linha">
+                        <span class="dado-rotulo">Fase</span>
+                        <span class="dado-valor">@detalhe.Financiamento.Fase</span>
+                    </div>
+                    <div class="dado-linha">
+                        <span class="dado-rotulo">Nº Desembolso</span>
+                        <span class="dado-valor">@detalhe.Financiamento.NumeroDesembolso</span>
+                    </div>
+                    <div class="dado-linha dado-linha-last">
+                        <span class="dado-rotulo">% Obra concluída (BM)</span>
+                        <div class="dado-obra-wrap">
+                            <div class="obra-track">
+                                <div class="obra-fill" style="width: @detalhe.Financiamento.PercentualObra%"></div>
+                            </div>
+                            <span class="dado-valor dado-mono">@detalhe.Financiamento.PercentualObra%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dados-divisor-v"></div>
+
+                <div class="dados-coluna">
+                    <div class="dados-secao-titulo">Dados do Financiamento</div>
+                    <div class="dado-linha">
+                        <span class="dado-rotulo">Programa</span>
+                        <span class="dado-valor">@detalhe.Financiamento.Programa</span>
+                    </div>
+                    <div class="dado-linha">
+                        <span class="dado-rotulo">Valor solicitado (parcela)</span>
+                        <span class="dado-valor dado-valor-link dado-mono">@ServicoMock.FormatarBRL(Desembolso.Valor)</span>
+                    </div>
+                    <div class="dado-linha">
+                        <span class="dado-rotulo">Valor de Investimento (VI)</span>
+                        <span class="dado-valor dado-mono">@ServicoMock.FormatarBRL(detalhe.Financiamento.ValorFinanciamento)</span>
+                    </div>
+                    <div class="dado-linha dado-linha-last">
+                        <span class="dado-rotulo">Contrapartida mín.</span>
+                        <span class="dado-valor">@detalhe.Financiamento.Amortizacao</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Corpo: sidebar + painel de detalhe ── -->
+        <div class="dialog-corpo">
+
+            <!-- Sidebar de validações -->
+            <aside class="sidebar-validacoes">
+                @{
+                    var invalidas  = validacoesEfetivas.Where(v => v.Status == "invalido").ToList();
+                    var pendentes2 = validacoesEfetivas.Where(v => v.Status == "pendente").ToList();
+                    var validas    = validacoesEfetivas.Where(v => v.Status == "valido").ToList();
+                }
+
+                @if (invalidas.Any())
+                {
+                    <div class="sidebar-grupo-titulo">
+                        <span class="sidebar-grupo-dot sidebar-dot-invalido"></span>
+                        <span class="sidebar-grupo-label">Inválidas</span>
+                        <span class="sidebar-grupo-badge sidebar-badge-invalido">@invalidas.Count</span>
+                    </div>
+                    <div class="sidebar-grupo-itens">
+                        @foreach (var v in invalidas)
+                        {
+                            <SidebarItemValidacao Validacao="v"
+                                                  Selecionado="@(_chaveSelecionada == $"v{v.Numero}")"
+                                                  ContadorComentarios="@ContarComentarios($"v{v.Numero}")"
+                                                  AoSelecionar="@(() => _chaveSelecionada = $"v{v.Numero}")" />
+                        }
+                    </div>
+                }
+
+                @if (pendentes2.Any())
+                {
+                    <div class="sidebar-grupo-titulo">
+                        <span class="sidebar-grupo-dot sidebar-dot-pendente"></span>
+                        <span class="sidebar-grupo-label">A analisar</span>
+                        <span class="sidebar-grupo-badge sidebar-badge-pendente">@pendentes2.Count</span>
+                    </div>
+                    <div class="sidebar-grupo-itens">
+                        @foreach (var v in pendentes2)
+                        {
+                            <SidebarItemValidacao Validacao="v"
+                                                  Selecionado="@(_chaveSelecionada == $"v{v.Numero}")"
+                                                  ContadorComentarios="@ContarComentarios($"v{v.Numero}")"
+                                                  AoSelecionar="@(() => _chaveSelecionada = $"v{v.Numero}")" />
+                        }
+                    </div>
+                }
+
+                @if (validas.Any())
+                {
+                    <div class="sidebar-grupo-titulo">
+                        <span class="sidebar-grupo-dot sidebar-dot-valido"></span>
+                        <span class="sidebar-grupo-label">Válidas</span>
+                        <span class="sidebar-grupo-badge sidebar-badge-valido">@validas.Count</span>
+                    </div>
+                    <div class="sidebar-grupo-itens">
+                        @foreach (var v in validas)
+                        {
+                            <SidebarItemValidacao Validacao="v"
+                                                  Selecionado="@(_chaveSelecionada == $"v{v.Numero}")"
+                                                  ContadorComentarios="@ContarComentarios($"v{v.Numero}")"
+                                                  AoSelecionar="@(() => _chaveSelecionada = $"v{v.Numero}")" />
+                        }
+                    </div>
+                }
+            </aside>
+
+            <!-- Painel de detalhe -->
+            <section class="painel-detalhe">
+                @{
+                    var validacaoSelecionada = validacoesEfetivas
+                        .FirstOrDefault(v => $"v{v.Numero}" == _chaveSelecionada);
+                }
+
+                @if (validacaoSelecionada is null)
+                {
+                    <div class="painel-placeholder">
+                        <i class="bi bi-card-checklist"></i>
+                        <p>Selecione uma validação ao lado</p>
+                    </div>
+                }
+                else
+                {
+                    var chave = $"v{validacaoSelecionada.Numero}";
+                    var comentariosValidacao = ObterComentarios(chave);
+
+                    <div class="painel-validacao-detalhe">
+
+                        <!-- ── CABEÇALHO: badge gradiente + título + status + detalhe ── -->
+                        <div class="painel-val-header">
+                            <div class="painel-val-content">
+                                <div class="painel-val-titulo-row">
+                                    <h3 class="painel-val-titulo">
+                                        <span class="painel-val-num-titulo">@validacaoSelecionada.Numero.ToString().PadLeft(2, '0')</span>
+                                        @validacaoSelecionada.Titulo
+                                    </h3>
+                                    <PilulhaStatus Status="@validacaoSelecionada.Status" Tamanho="sm" />
+                                </div>
+                                <!-- Detalhe logo abaixo do título — contexto antes das sub-validações -->
+                                <p class="painel-val-subtexto">@validacaoSelecionada.Detalhe</p>
+                            </div>
+                        </div>
+
+                        @if (validacaoSelecionada.SubItens.Any())
+                        {
+                            <!-- ── SUB-VALIDAÇÕES: árvore colapsável com linha lateral ── -->
+                            var subValidas = validacaoSelecionada.SubItens.Count(s => s.Status == "valido");
+                            <div class="subvalidacoes-secao">
+                                <div class="subval-secao-header">
+                                    <span class="subval-secao-label">Sub-validações</span>
+                                    <span class="subval-secao-count">@subValidas/@validacaoSelecionada.SubItens.Count válidas</span>
+                                </div>
+                                <div class="subvalidacoes-arvore subvalidacoes-arvore-@validacaoSelecionada.Status">
+                                    @foreach (var sub in validacaoSelecionada.SubItens)
+                                    {
+                                        var chaveSubAberta = $"{chave}-{sub.Numero}";
+                                        var subAberta = _subAbertas.Contains(chaveSubAberta);
+                                        var subComments = ObterComentarios(chaveSubAberta);
+
+                                        <div id="subitem-@chaveSubAberta.Replace(".", "-")"
+                                             class="subitem-linha @(subAberta ? "subitem-aberto" : "")">
+                                            <button class="subitem-header" @onclick="() => AlternarSubAsync(chaveSubAberta)">
+                                                <span class="subitem-num">@sub.Numero</span>
+                                                <span class="subitem-titulo">@sub.Titulo</span>
+                                                @if (subComments.Any())
+                                                {
+                                                    <span class="subval-comm-badge">
+                                                        <i class="bi bi-chat-text-fill"></i>@subComments.Count
+                                                    </span>
+                                                }
+                                                <PilulhaStatus Status="@sub.Status" Tamanho="sm" />
+                                                <i class="bi bi-chevron-@(subAberta ? "up" : "down") subitem-chevron"></i>
+                                            </button>
+                                            <div class="acc-body @(subAberta ? "aberto" : "")">
+                                                <div class="acc-inner">
+                                                    <div class="subitem-corpo">
+                                                        @if (!string.IsNullOrEmpty(sub.Detalhe))
+                                                        {
+                                                            <p class="subitem-detalhe">@sub.Detalhe</p>
+                                                        }
+                                                        <FioComentario
+                                                            Comentarios="@subComments"
+                                                            AoAdicionarComentario="@(c => AdicionarComentario(chaveSubAberta, c))" />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <!-- ── SEM SUB-ITENS: tratativa direto ── -->
+                            <div class="tratativa-direta">
+                                <FioComentario
+                                    Comentarios="@comentariosValidacao"
+                                    AoAdicionarComentario="@(c => AdicionarComentario(chave, c))" />
+                            </div>
+                        }
+
+                    </div>
+                }
+            </section>
+        </div>
+
+        <!-- ── Rodapé ── -->
+        <div class="dialog-rodape">
+            @if (_modoRejeicao)
+            {
+                <input class="input-coord" type="text" placeholder="Código da coordenação (ex: COORD-SIPUB)"
+                       @bind="_codigoCoordenacao" @bind:event="oninput" />
+                <button class="btn-recusar-cancelar" @onclick="CancelarRejeicao">
+                    Cancelar
+                </button>
+                <button class="btn-recusar" @onclick="RejeitarDesembolso"
+                        disabled="@(string.IsNullOrWhiteSpace(_codigoCoordenacao) || _processandoAcao)">
+                    <i class="bi bi-x-circle"></i> Confirmar rejeição
+                </button>
+            }
+            else
+            {
+                <button class="btn-recusar" @onclick="() => _modoRejeicao = true" disabled="@_processandoAcao">
+                    <i class="bi bi-x-circle"></i> Recusar desembolso
+                </button>
+                <button class="btn-aprovar" disabled="@(totalInvalidas > 0 || totalPendentes > 0 || _processandoAcao)"
+                        @onclick="AprovarDesembolso">
+                    @if (_processandoAcao)
+                    {
+                        <i class="bi bi-arrow-repeat spinner"></i>
+                        <span>Processando…</span>
+                    }
+                    else
+                    {
+                        <i class="bi @(totalInvalidas > 0 ? "bi-lock" : "bi-check-circle")"></i>
+                        <span>Aprovar desembolso</span>
+                    }
+                </button>
+            }
+        </div>
+
+        <!-- Popover de atribuição -->
+        @if (_popoverAberto)
+        {
+            <div class="popover-atribuicao">
+                <div class="popover-titulo">Atribuir analista</div>
+                @foreach (var f in ServicoMock.ObterFuncionarios())
+                {
+                    <button class="popover-item" @onclick="() => AtribuirAnalista(f)">
+                        <div class="popover-avatar" style="background: @f.Cor">@f.Iniciais</div>
+                        <span>@f.Nome</span>
+                    </button>
+                }
+                @if (Analista is not null)
+                {
+                    <button class="popover-remover" @onclick="RemoverAnalista">Remover atribuição</button>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public DesembolsoCAD         Desembolso { get; set; } = null!;
+    [Parameter, EditorRequired] public List<DesembolsoCAD>   Todos      { get; set; } = [];
+    [Parameter] public Funcionario?  Analista    { get; set; }
+    [Parameter] public EventCallback AoFechar    { get; set; }
+    [Parameter] public EventCallback<string>     AoNavegar  { get; set; }
+    [Parameter] public EventCallback<Funcionario?> AoAtribuir { get; set; }
+
+    private string? _chaveSelecionada;
+    private HashSet<string> _subAbertas = [];
+    private Dictionary<string, List<Comentario>> _comentarios = new();
+    private bool _popoverAberto = false;
+    private bool _modoRejeicao = false;
+    private bool _processandoAcao = false;
+    private string _codigoCoordenacao = "";
+
+    protected override void OnInitialized()
+    {
+        var validacoes = ServicoMock.ObterValidacoes(Desembolso.Id);
+        foreach (var v in validacoes.Where(v => v.ComentarioPreenchido is not null))
+        {
+            var chave = $"v{v.Numero}";
+            _comentarios[chave] = [v.ComentarioPreenchido!];
+        }
+    }
+
+    private int IndiceAtual => Todos.FindIndex(d => d.Id == Desembolso.Id);
+    private bool TemAnterior => IndiceAtual > 0;
+    private bool TemProximo  => IndiceAtual < Todos.Count - 1;
+
+    private async Task Anterior()
+    {
+        if (TemAnterior) await AoNavegar.InvokeAsync(Todos[IndiceAtual - 1].Id);
+    }
+    private async Task Proximo()
+    {
+        if (TemProximo) await AoNavegar.InvokeAsync(Todos[IndiceAtual + 1].Id);
+    }
+
+    private async Task FecharDialog() => await AoFechar.InvokeAsync();
+
+    /// <summary>Atalho da barra de progresso: seleciona a primeira validação inválida.</summary>
+    private void IrParaPrimeiraInvalida()
+    {
+        var invalidas = ObterValidacoesEfetivas().Where(v => v.Status == "invalido").ToList();
+        if (invalidas.Any())
+            _chaveSelecionada = $"v{invalidas.First().Numero}";
+    }
+
+    private List<Validacao> ObterValidacoesEfetivas()
+    {
+        var validacoes = ServicoMock.ObterValidacoes(Desembolso.Id);
+        return validacoes.Select(v =>
+        {
+            var chave = $"v{v.Numero}";
+
+            // Resolve status efetivo de cada sub-item
+            var subEfetivos = v.SubItens.Select(sub =>
+            {
+                var chaveSub = $"{chave}-{sub.Numero}";
+                var temPositivo = _comentarios.TryGetValue(chaveSub, out var cs) && cs.Any(c => c.Tipo == "positivo");
+                var statusEfetivo = (sub.Status is "invalido" or "pendente" && temPositivo) ? "valido" : sub.Status;
+                return new SubValidacao { Numero = sub.Numero, Titulo = sub.Titulo, Status = statusEfetivo, Detalhe = sub.Detalhe };
+            }).ToList();
+
+            // Se o pai tem sub-itens e todos são válidos → pai vira válido
+            if (v.SubItens.Any() && subEfetivos.All(s => s.Status == "valido"))
+            {
+                return new Validacao
+                {
+                    Numero = v.Numero, Titulo = v.Titulo,
+                    Resultado = v.Resultado, Status = "valido",
+                    Icone = v.Icone, Detalhe = v.Detalhe,
+                    SubItens = subEfetivos,
+                    ComentarioPreenchido = v.ComentarioPreenchido
+                };
+            }
+
+            // Sem sub-itens: invalido/pendente + comentário positivo no próprio item → válido
+            if (!v.SubItens.Any() && v.Status is "invalido" or "pendente"
+                && _comentarios.TryGetValue(chave, out var comms)
+                && comms.Any(c => c.Tipo == "positivo"))
+            {
+                return new Validacao
+                {
+                    Numero = v.Numero, Titulo = v.Titulo,
+                    Resultado = v.Resultado, Status = "valido",
+                    Icone = v.Icone, Detalhe = v.Detalhe,
+                    SubItens = subEfetivos,
+                    ComentarioPreenchido = v.ComentarioPreenchido
+                };
+            }
+
+            return new Validacao
+            {
+                Numero = v.Numero, Titulo = v.Titulo,
+                Resultado = v.Resultado, Status = v.Status,
+                Icone = v.Icone, Detalhe = v.Detalhe,
+                SubItens = subEfetivos,
+                ComentarioPreenchido = v.ComentarioPreenchido
+            };
+        }).ToList();
+    }
+
+    private List<Comentario> ObterComentarios(string chave)
+    {
+        _comentarios.TryGetValue(chave, out var lista);
+        return lista ?? [];
+    }
+    private int ContarComentarios(string chave) => ObterComentarios(chave).Count;
+
+    private void AdicionarComentario(string chave, Comentario comentario)
+    {
+        if (!_comentarios.ContainsKey(chave))
+            _comentarios[chave] = [];
+        _comentarios[chave].Add(comentario);
+    }
+
+    private async Task AprovarDesembolso()
+    {
+        _processandoAcao = true;
+        StateHasChanged();
+        try
+        {
+            var req = new { MatriculaUsuario = ServicoUsuario.Matricula, UsuarioNome = ServicoUsuario.Nome };
+            await Http.PutAsJsonAsync($"api/desembolso/{Desembolso.Id}/aprovar", req);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Dialog] Erro ao aprovar: {ex.Message}");
+        }
+        finally
+        {
+            _processandoAcao = false;
+        }
+        await AoFechar.InvokeAsync();
+    }
+
+    private async Task AlternarSubAsync(string chave)
+    {
+        if (!_subAbertas.Add(chave))
+        {
+            _subAbertas.Remove(chave);
+            return;
+        }
+
+        // Aguarda o DOM atualizar e rola o sub-item para a visão
+        await Task.Delay(120);
+        var elId = "subitem-" + chave.Replace(".", "-");
+        await JS.InvokeVoidAsync("scrollSubItemIntoView", elId);
+    }
+
+    private void CancelarRejeicao()
+    {
+        _modoRejeicao      = false;
+        _codigoCoordenacao = string.Empty;
+    }
+
+    private async Task RejeitarDesembolso()
+    {
+        if (string.IsNullOrWhiteSpace(_codigoCoordenacao)) return;
+
+        _processandoAcao = true;
+        StateHasChanged();
+        try
+        {
+            var req = new { MatriculaUsuario = ServicoUsuario.Matricula, UsuarioNome = ServicoUsuario.Nome, CodigoCoordenacao = _codigoCoordenacao };
+            await Http.PutAsJsonAsync($"api/desembolso/{Desembolso.Id}/rejeitar", req);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Dialog] Erro ao rejeitar: {ex.Message}");
+        }
+        finally
+        {
+            _processandoAcao   = false;
+            _modoRejeicao      = false;
+            _codigoCoordenacao = string.Empty;
+        }
+        await AoFechar.InvokeAsync();
+    }
+
+    private async Task AtribuirAnalista(Funcionario f)
+    {
+        _popoverAberto = false;
+        await AoAtribuir.InvokeAsync(f);
+    }
+    private async Task RemoverAnalista()
+    {
+        _popoverAberto = false;
+        await AoAtribuir.InvokeAsync(null);
+    }
+}
+
+
+<style>
+.overlay-dialog {
+    position: fixed;
+    inset: 0;
+    background: rgba(34,41,46,.45);
+    z-index: 500;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 16px;
+    overflow-y: auto;
+    animation: fadeIn .18s ease;
+}
+
+.dialog {
+    position: relative;
+    width: 100%;
+    max-width: 980px;
+    background: #fff;
+    border-radius: var(--radius-xl, 10px);
+    box-shadow: var(--shadow-pop);
+    display: flex;
+    flex-direction: column;
+    animation: popIn .22s ease;
+    max-height: calc(100vh - 32px);
+    overflow: hidden;
+    margin: auto;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TOP BAR  —  bg white, border-b ink-100, px-5 py-2.5
+   Idêntico ao React: icon + "Desembolso ID" + numId | pill-group nav | X
+   ═══════════════════════════════════════════════════════════ */
+.dialog-topbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 20px;
+    border-bottom: 1px solid var(--ink-100);
+    flex-shrink: 0;
+    background: #fff;
+}
+/* Lado esquerdo: ícone + label + numId */
+.dialog-id {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex: 1;
+}
+.dialog-id i { font-size: 11px; color: #9EB2BB; }
+.dialog-id-label { font-size: 11.5px; font-weight: 600; color: var(--ink-600); }
+.dialog-id-num   { font-family: monospace; font-size: 11.5px; font-weight: 600; color: var(--ink-700); }
+
+/* Lado direito: pill-group + X */
+.dialog-topbar-right { display: flex; align-items: center; gap: 6px; }
+
+/* Pill-group — borda única ao redor do bloco prev/count/next */
+.nav-pill-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 0;
+    border: 1px solid var(--ink-100);
+    border-radius: var(--radius-md);
+    background: #FAFBFD;
+    padding: 2px;
+}
+.btn-nav {
+    width: 24px; height: 24px;
+    border-radius: 5px;
+    background: transparent;
+    border: none;
+    color: #64747A;
+    font-size: 11px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: background .12s;
+}
+.btn-nav:hover:not(:disabled) { background: #fff; }
+.btn-nav:disabled { opacity: .3; cursor: not-allowed; }
+.nav-pos {
+    padding: 0 6px;
+    font-size: 10.5px;
+    font-weight: 700;
+    color: var(--ink-600);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Botão fechar — com borda border-ink-100 */
+.btn-fechar {
+    width: 28px; height: 28px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--ink-100);
+    color: #64747A;
+    font-size: 12px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: background .12s;
+}
+.btn-fechar:hover { background: var(--ink-50); }
+
+/* ═══════════════════════════════════════════════════════════
+   REPORT HEADER  —  bg #F8FAFC, border-b ink-100
+   ═══════════════════════════════════════════════════════════ */
+.dialog-header {
+    background: #F8FAFC;
+    border-bottom: 1px solid var(--ink-100);
+    flex-shrink: 0;
+}
+
+/* Linha título: px-6 pt-3 pb-3, border-b ink-100 */
+.header-titulo-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 24px 12px;
+    border-bottom: 1px solid var(--ink-100);
+}
+.header-titulo-left { flex: 1; min-width: 0; }
+
+/* Name row: h2 + id + gigov — alinhados na baseline */
+.header-name-row {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+}
+.header-mutuario {
+    font-size: 20px;
+    font-weight: 800;
+    line-height: 1.2;
+    letter-spacing: -.02em;
+    color: var(--ink-900);
+    margin: 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+/* ID do desembolso — mono, sem borda, cinza médio */
+.header-dsb-id {
+    font-family: monospace;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--ink-400);
+    flex-shrink: 0;
+}
+/* GIGOV — rounded-md, border, bg ink-50 */
+.header-gigov {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--ink-100);
+    background: var(--ink-50);
+    border-radius: 6px;
+    padding: 1px 6px;
+    font-family: monospace;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--ink-600);
+    flex-shrink: 0;
+}
+
+/* Meta row: avatar + nome + prazo */
+.header-meta-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.analista-mini {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    color: #fff;
+    font-size: 8.5px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+}
+.header-analista-nome { font-size: 12px; font-weight: 500; color: var(--ink-600); }
+
+/* Prazo chip — azul, idêntico ao React */
+.header-prazo-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    border: 1px solid var(--brand-200);
+    background: var(--brand-50);
+    border-radius: var(--radius-full);
+    padding: 4px 10px;
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--brand-800, #004F93);
+}
+.header-prazo-chip i { font-size: 10px; color: #005CA9; }
+.header-prazo-chip strong { font-weight: 700; }
+
+/* Botões de ação */
+.header-acoes {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    padding-top: 2px;
+}
+
+/* Vincular/Alterar vínculo — bg-brand-50 border-brand-200 text-brand-800 (AZUL) */
+.btn-vincular {
+    display: inline-flex; align-items: center; gap: 5px;
+    border: 1px solid var(--brand-200);
+    background: var(--brand-50);
+    border-radius: var(--radius-md);
+    padding: 5px 12px;
+    font-size: 11px; font-weight: 700; font-family: inherit;
+    color: var(--brand-800, #004F93);
+    cursor: pointer;
+    transition: background .12s;
+    box-shadow: 0 1px 2px rgba(0,0,0,.06);
+}
+.btn-vincular:hover { background: var(--brand-100); }
+.btn-chevron { opacity: .7; font-size: 9px !important; }
+
+/* Remover vínculo — inativo quando sem analista */
+.btn-remover-vinculo {
+    display: inline-flex; align-items: center; gap: 5px;
+    border-radius: var(--radius-md);
+    padding: 5px 12px;
+    font-size: 11px; font-weight: 700; font-family: inherit;
+    cursor: pointer;
+    transition: background .12s, opacity .12s;
+    border: 1px solid #FBCBC7;
+    background: #FEF6F5;
+    color: #9A2A1F;
+    box-shadow: 0 1px 2px rgba(0,0,0,.06);
+}
+.btn-remover-vinculo:hover:not(:disabled) { background: #FCE6E3; }
+.btn-remover-desativo,
+.btn-remover-vinculo:disabled {
+    border-color: var(--ink-100) !important;
+    background: #fff !important;
+    color: var(--ink-300) !important;
+    cursor: not-allowed !important;
+    box-shadow: none !important;
+}
+
+/* Validar — brand-700 sólido */
+.btn-validar {
+    display: inline-flex; align-items: center; gap: 5px;
+    border: 1px solid #004F93;
+    background: #005CA9;
+    border-radius: var(--radius-md);
+    padding: 5px 12px;
+    font-size: 11px; font-weight: 700; font-family: inherit;
+    color: #fff;
+    cursor: pointer;
+    transition: opacity .12s;
+    box-shadow: 0 1px 3px rgba(0,0,0,.18);
+}
+.btn-validar:hover { opacity: .9; }
+
+/* ═══════════════════════════════════════════════════════════
+   GRID 2 COLUNAS  —  divide-x divide-ink-100, px-6 py-2.5
+   Cada dado-linha tem border-b, last sem borda
+   ═══════════════════════════════════════════════════════════ */
+.header-dados-grid {
+    display: flex;
+}
+.dados-coluna {
+    flex: 1;
+    padding: 10px 24px;
+    min-width: 0;
+}
+.dados-divisor-v {
+    width: 1px;
+    background: var(--ink-100);
+    align-self: stretch;
+    flex-shrink: 0;
+}
+.dados-secao-titulo {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .18em;
+    color: var(--ink-400);
+    margin-bottom: 4px;
+}
+.dado-linha {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    border-bottom: 1px solid #EDF0F2;
+    padding: 6px 0;
+}
+.dado-linha-last { border-bottom: none; }
+.dado-rotulo {
+    flex-shrink: 0;
+    font-size: 10.5px;
+    color: var(--ink-400);
+}
+.dado-valor {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ink-900);
+    text-align: right;
+}
+.dado-valor-link { color: var(--brand-700); }
+.dado-mono { font-family: monospace; font-variant-numeric: tabular-nums; }
+
+/* Mini barra % obra */
+.dado-obra-wrap { display: flex; align-items: center; gap: 8px; }
+.obra-track {
+    width: 64px; height: 6px;
+    background: var(--ink-200);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+    flex-shrink: 0;
+}
+.obra-fill {
+    height: 100%;
+    background: var(--brand-700, #005CA9);
+    border-radius: var(--radius-full);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   BARRA DE PROGRESSO  —  secção separada bg branco
+   px-6 py-2, border-b ink-100
+   ═══════════════════════════════════════════════════════════ */
+.progresso-secao {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 24px;
+    background: #fff;
+    border-bottom: 1px solid var(--ink-100);
+    flex-shrink: 0;
+}
+.prog-label-upper {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--ink-400);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.prog-contagem {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--ink-700);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.prog-barra {
+    flex: 1;
+    height: 8px;
+    background: var(--ink-100);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+}
+.prog-fill {
+    height: 100%;
+    background: var(--brand-700, #005CA9);
+    border-radius: var(--radius-full);
+    transition: width .7s ease;
+}
+
+/* Botão inválidas — dot span + texto */
+.btn-invalidas-atalho {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid #FBCBC7;
+    background: #FEF6F5;
+    border-radius: var(--radius-md);
+    padding: 4px 12px;
+    font-size: 10.5px;
+    font-weight: 700;
+    font-family: inherit;
+    color: #9A2A1F;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: opacity .12s;
+}
+.btn-invalidas-atalho:hover { opacity: .8; }
+.btn-inv-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #C0392B;
+    flex-shrink: 0;
+    display: inline-block;
+}
+
+/* A analisar */
+.prog-pendentes {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    border: 1px solid var(--amber-400, #FDB548);
+    background: var(--amber-50, #FFEFD6);
+    border-radius: var(--radius-md);
+    padding: 4px 12px;
+    font-size: 10.5px;
+    font-weight: 700;
+    color: var(--amber-700, #A65E00);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* Todas válidas */
+.prog-tudo-ok {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    border: 1px solid #BEEACE;
+    background: #F2FBF5;
+    border-radius: var(--radius-md);
+    padding: 4px 12px;
+    font-size: 10.5px;
+    font-weight: 700;
+    color: #145C38;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* Corpo: sidebar + painel */
+.dialog-corpo {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    min-height: 0;
+}
+
+/* Sidebar */
+.sidebar-validacoes {
+    width: 240px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--ink-200);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    background: #F4F7FA;
+    padding: 8px 0;
+    gap: 4px;
+}
+
+/* Cabeçalho de grupo */
+.sidebar-grupo-titulo {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px 4px;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #F4F7FA;
+}
+.sidebar-grupo-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.sidebar-dot-invalido { background: var(--err); }
+.sidebar-dot-pendente { background: var(--warn); }
+.sidebar-dot-valido   { background: var(--ok); }
+
+.sidebar-grupo-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    color: var(--ink-500);
+    flex: 1;
+}
+.sidebar-grupo-badge {
+    font-size: 10px;
+    font-weight: 700;
+    border-radius: var(--radius-full);
+    padding: 1px 6px;
+    font-variant-numeric: tabular-nums;
+}
+.sidebar-badge-invalido { background: #FCE6E3; color: #9A2A1F; }
+.sidebar-badge-pendente { background: #FFEFD6; color: #663A00; }
+.sidebar-badge-valido   { background: #E0F2E7; color: #1A7A4A; }
+
+/* Container dos itens do grupo */
+.sidebar-grupo-itens {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 2px 8px 6px;
+}
+
+/* Painel de detalhe */
+.painel-detalhe {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    min-width: 0;
+}
+.painel-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    gap: 10px;
+    color: var(--ink-300);
+}
+.painel-placeholder i { font-size: 36px; }
+.painel-placeholder p { font-size: 13px; }
+
+/* ═══════════════════════════════════════════════════════════
+   PAINEL DE DETALHE DA VALIDAÇÃO
+   Ordem: cabeçalho (badge+título+status+detalhe) → sub-validações → tratativa
+   ═══════════════════════════════════════════════════════════ */
+.painel-validacao-detalhe { display: flex; flex-direction: column; gap: 0; }
+
+/* ── Cabeçalho: badge gradiente + conteúdo ── */
+.painel-val-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--ink-100);
+    margin-bottom: 16px;
+}
+
+/* Badge numerado quadrado com gradiente */
+.painel-val-badge {
+    flex-shrink: 0;
+    width: 32px; height: 32px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: monospace;
+    font-size: 11px;
+    font-weight: 800;
+    color: #fff;
+    margin-top: 2px;
+}
+.badge-inv  { background: linear-gradient(135deg, #A93226, #C0392B); }
+.badge-val  { background: linear-gradient(135deg, #005CA9, #2D8AD8); }
+.badge-pend { background: linear-gradient(135deg, #A65E00, #D87B00); }
+
+.painel-val-content { flex: 1; min-width: 0; }
+
+.painel-val-titulo-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+}
+.painel-val-titulo {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.3;
+    letter-spacing: -.01em;
+    color: var(--ink-900);
+    margin: 0;
+}
+/* Detalhe/contexto — aparece logo abaixo do título, ANTES das sub-validações */
+.painel-val-subtexto {
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--ink-500);
+    margin: 0;
+}
+
+/* ── Seção de sub-validações ── */
+.subvalidacoes-secao { margin-bottom: 0; }
+
+.subval-secao-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+.subval-secao-label {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    color: var(--ink-400);
+}
+.subval-secao-count {
+    font-size: 10.5px;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-500);
+}
+
+.subvalidacoes { display: flex; flex-direction: column; gap: 8px; }
+
+/* Card de sub-validação — border simples, sem cor por status */
+.subval-card {
+    border: 1px solid var(--ink-100);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    background: #fff;
+}
+
+/* Header do sub-item */
+.subval-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: background .12s;
+}
+.subval-header:hover { background: #F8FAFC; }
+
+.subval-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.subval-dot-valido   { background: var(--ok); }
+.subval-dot-invalido { background: var(--err); }
+
+.subval-num {
+    width: 28px;
+    flex-shrink: 0;
+    font-family: monospace;
+    font-size: 10.5px;
+    font-weight: 700;
+    color: var(--ink-400);
+}
+.subval-titulo {
+    flex: 1;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--ink-900);
+    line-height: 1.3;
+    text-align: left;
+}
+.subval-chevron {
+    font-size: 11px;
+    color: #9EB2BB;
+    flex-shrink: 0;
+}
+/* Badge de comentários no sub-item */
+.subval-comm-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: var(--brand-50);
+    border: 1px solid var(--brand-100);
+    border-radius: var(--radius-full);
+    padding: 1px 7px;
+    font-size: 9.5px;
+    font-weight: 700;
+    color: var(--brand-700);
+    flex-shrink: 0;
+}
+.subval-comm-badge i { font-size: 9px; }
+
+/* Corpo do acordeão: bg #F8FAFC */
+.subval-acc-corpo {
+    border-top: 1px solid var(--ink-100);
+    background: #F8FAFC;
+    padding: 12px 16px;
+}
+.subval-detalhe {
+    font-size: 12.5px;
+    color: var(--ink-600);
+    line-height: 1.6;
+    margin: 0 0 12px 0;
+}
+/* Card branco de tratativa dentro do sub-item */
+.subval-tratativa-card {
+    border: 1px solid var(--ink-100);
+    border-radius: var(--radius-lg);
+    background: #fff;
+    padding: 10px;
+}
+.subval-tratativa-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+.subval-tratativa-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    color: var(--ink-400);
+}
+.subval-tratativa-count {
+    font-size: 10px;
+    color: var(--ink-400);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SUB-VALIDAÇÕES — Lista limpa em card
+   ═══════════════════════════════════════════════════════════ */
+
+.subvalidacoes-arvore {
+    position: relative;
+    margin-left: 4px;
+    padding-left: 16px;
+    border-left: 2px solid var(--ink-200);
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+/* Linha lateral sempre neutra, independente do status do pai */
+.subvalidacoes-arvore-invalido,
+.subvalidacoes-arvore-valido,
+.subvalidacoes-arvore-pendente { border-left-color: var(--ink-200); }
+
+/* Conector horizontal "─" saindo da linha lateral */
+.subitem-linha {
+    position: relative;
+    border-bottom: 1px solid var(--ink-100);
+}
+.subitem-linha:last-child { border-bottom: none; }
+.subitem-linha::before {
+    content: '';
+    position: absolute;
+    left: -16px;
+    top: 22px;
+    width: 13px;
+    height: 2px;
+    background: var(--ink-200);
+    z-index: 0;
+}
+
+/* Header do sub-item */
+.subitem-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 11px 14px;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: background .12s;
+}
+.subitem-header:hover { background: var(--ink-50); }
+.subitem-aberto > .subitem-header { background: transparent; }
+
+/* Número do sub-item — pílula monoespaçada */
+.subitem-num {
+    flex-shrink: 0;
+    padding: 2px 8px;
+    height: 22px;
+    min-width: 36px;
+    border-radius: var(--radius-md);
+    background: var(--ink-100);
+    font-family: monospace;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--ink-700);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    letter-spacing: -.01em;
+}
+
+/* Título */
+.subitem-titulo {
+    flex: 1;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink-900);
+    line-height: 1.3;
+    text-align: left;
+}
+
+/* Chevron */
+.subitem-chevron {
+    font-size: 11px;
+    color: var(--ink-300);
+    flex-shrink: 0;
+    transition: transform .2s;
+}
+.subitem-aberto .subitem-chevron { color: var(--ink-500); }
+
+/* Corpo expandido */
+.subitem-corpo {
+    border-top: 1px solid var(--ink-100);
+    padding: 14px 16px 16px;
+    background: transparent;
+}
+.subitem-detalhe {
+    font-size: 12px;
+    color: var(--ink-500);
+    line-height: 1.6;
+    margin: 0 0 12px 0;
+}
+
+/* ── Número inline no título da validação — bolinha ── */
+.painel-val-num-titulo {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--ink-100);
+    border: 1px solid var(--ink-200);
+    font-family: monospace;
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--ink-700);
+    margin-right: 10px;
+    flex-shrink: 0;
+    vertical-align: middle;
+}
+
+/* ── Tratativa direta (sem sub-itens) ── */
+.tratativa-direta { display: flex; flex-direction: column; gap: 8px; }
+
+/* Manter retrocompatibilidade */
+.divisor { height: 1px; background: var(--ink-100); }
+.detalhe-texto { font-size: 13px; color: var(--ink-700); line-height: 1.6; }
+.secao-titulo {
+    font-size: 11px; font-weight: 700; color: var(--ink-500);
+    text-transform: uppercase; letter-spacing: .5px;
+    margin-bottom: 8px; display: flex; align-items: center; gap: 6px;
+}
+.comentarios-count {
+    background: var(--brand-100); color: var(--brand-700);
+    font-size: 10px; font-weight: 700; border-radius: var(--radius-full);
+    padding: 0 5px; min-width: 16px; height: 16px;
+    display: inline-flex; align-items: center; justify-content: center;
+}
+
+/* Rodapé */
+.dialog-rodape {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 10px 16px;
+    border-top: 1px solid var(--ink-200);
+    flex-shrink: 0;
+    background: var(--ink-50);
+}
+.btn-recusar {
+    display: flex; align-items: center; gap: 5px;
+    height: 32px; padding: 0 14px;
+    border-radius: var(--radius-md);
+    font-size: 12px; font-weight: 600;
+    color: var(--err);
+    background: var(--err-bg);
+    border: 1px solid #f5c0bb;
+    transition: background .15s;
+}
+.btn-recusar:hover { background: #f8d8d5; }
+
+.btn-aprovar {
+    display: flex; align-items: center; gap: 5px;
+    height: 32px; padding: 0 16px;
+    border-radius: var(--radius-md);
+    font-size: 12px; font-weight: 600;
+    color: #fff;
+    background: var(--ok);
+    border: none;
+    transition: background .15s, opacity .15s;
+}
+.btn-aprovar:hover:not(:disabled) { background: #155e3b; }
+.btn-aprovar:disabled { opacity: .45; cursor: not-allowed; }
+
+/* Input coordenação no modo rejeição */
+.input-coord {
+    flex: 1;
+    height: 32px;
+    border: 1px solid var(--ink-200);
+    border-radius: var(--radius-md);
+    padding: 0 10px;
+    font-size: 12px;
+    font-family: inherit;
+    color: var(--ink-900);
+    background: #fff;
+    outline: none;
+    transition: border-color .15s;
+}
+.input-coord:focus { border-color: var(--brand-500); }
+
+.btn-recusar-cancelar {
+    display: flex; align-items: center;
+    height: 32px; padding: 0 14px;
+    border-radius: var(--radius-md);
+    font-size: 12px; font-weight: 600;
+    color: var(--ink-500);
+    background: #fff;
+    border: 1px solid var(--ink-200);
+    transition: background .15s;
+}
+.btn-recusar-cancelar:hover { background: var(--ink-50); }
+
+/* Popover de atribuição */
+.popover-atribuicao {
+    position: absolute;
+    top: 56px; right: 16px;
+    width: 220px;
+    background: #fff;
+    border: 1px solid var(--ink-200);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-pop);
+    z-index: 10;
+    overflow: hidden;
+    animation: slideDown .18s ease;
+}
+.popover-titulo {
+    padding: 8px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ink-500);
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    border-bottom: 1px solid var(--ink-100);
+}
+.popover-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink-900);
+    background: transparent;
+    border-bottom: 1px solid var(--ink-50);
+    transition: background .12s;
+}
+.popover-item:hover { background: var(--ink-50); }
+.popover-avatar {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+}
+.popover-remover {
+    width: 100%; padding: 7px 12px;
+    font-size: 11px; color: var(--err);
+    background: transparent; text-align: left;
+    transition: background .12s;
+}
+.popover-remover:hover { background: var(--err-bg); }
+</style>

@@ -1,0 +1,47 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Server (API)",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build-server",
+            "program": "${workspaceFolder}/Server/bin/Debug/net8.0/SipubDesembolsos.Server.dll",
+            "args": [],
+            "cwd": "${workspaceFolder}/Server",
+            "stopAtEntry": false,
+            "env": {
+                "ASPNETCORE_ENVIRONMENT": "Development",
+                "ASPNETCORE_URLS": "http://localhost:5072"
+            },
+            "serverReadyAction": {
+                "action": "openExternally",
+                "pattern": "\\bNow listening on:\\s+(https?://\\S+)",
+                "uriFormat": "%s/swagger"
+            }
+        },
+        {
+            "name": "Client (Blazor WASM)",
+            "type": "blazorwasm",
+            "request": "launch",
+            "preLaunchTask": "build-client",
+            "cwd": "${workspaceFolder}/Client",
+            "url": "http://localhost:5218"
+        },
+        {
+            "name": "Server (anexar)",
+            "type": "coreclr",
+            "request": "attach"
+        }
+    ],
+    "compounds": [
+        {
+            "name": "Server + Client (F5)",
+            "configurations": [
+                "Server (API)",
+                "Client (Blazor WASM)"
+            ],
+            "stopAll": true
+        }
+    ]
+}

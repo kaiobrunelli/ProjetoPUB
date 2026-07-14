@@ -1,0 +1,555 @@
+@using System.Globalization
+@using System.Net.Http.Json
+@using PlataformaNotificacao.Domain
+@using PlataformaNotificacao.Domain.DTO
+@using PlataformaNotificacao.Domain.Enum
+@inject HttpClient Http
+@inject IJSRuntime JS
+@inject ServicoUsuario ServicoUsuario
+
+@* FPD-AF — dialog. Verificações e certidões numa ÁRVORE única com linha lateral
+   (estilo das sub-validações do desembolso): itens numerados, chevron para
+   expandir. Comentário informativo. Dados e valores são grupos de campos. *@
+
+<div class="overlay-fpd" @onclick="AoVoltar"></div>
+
+<div class="dialog-fpd" @onclick:stopPropagation>
+
+    <div class="dialog-fpd-header">
+        <div class="dialog-fpd-icone"><i class="bi bi-clipboard-plus"></i></div>
+        <div>
+            <div class="dialog-fpd-titulo">Preencher FPD-AF</div>
+            <div class="dialog-fpd-subtitulo">Ficha de Previsão de Desembolso</div>
+        </div>
+        <button class="dialog-fpd-fechar" @onclick="AoVoltar" title="Fechar"><i class="bi bi-x-lg"></i></button>
+    </div>
+
+    <div class="dialog-fpd-corpo" @ref="_corpoRef">
+
+        <!-- ═══ DADOS DO CONTRATO ═══ -->
+        <div class="fpd-grupo-head"><i class="bi bi-file-earmark-text"></i><span>Dados do contrato</span></div>
+        <div class="fpd-grupo-campos">
+            <div class="fpd-ident">
+                <div class="fpd-campo fpd-campo-af">
+                    <label class="fpd-label">Contrato AF <span class="fpd-obrigatorio">*</span></label>
+                    <div class="fpd-af-linha">
+                        <input class="fpd-input" placeholder="Ex.: 0558698-45" @bind="_fpd.ContratoAf" @bind:after="InvalidarValidacao" />
+                        <button class="fpd-btn-buscar" @onclick="BuscarContrato" disabled="@_buscando">
+                            @if (_buscando) { <i class="bi bi-arrow-repeat spin"></i> } else { <i class="bi bi-search"></i> }
+                            <span>Buscar</span>
+                        </button>
+                    </div>
+                    @if (!string.IsNullOrEmpty(_msgBusca)) { <span class="fpd-msg-busca @(_buscaOk ? "ok" : "falha")">@_msgBusca</span> }
+                </div>
+                <div class="fpd-campo"><label class="fpd-label">GIGOV</label>
+                    <input class="fpd-input" @bind="_fpd.Gigov" @bind:after="InvalidarValidacao" /></div>
+                <div class="fpd-campo"><label class="fpd-label">Solicitante</label>
+                    <input class="fpd-input" value="@_fpd.Solicitante" readonly /></div>
+                <div class="fpd-campo"><label class="fpd-label">Gestor</label>
+                    <input class="fpd-input" @bind="_fpd.Gestor" /></div>
+                <div class="fpd-campo"><label class="fpd-label">Solicitado</label>
+                    <input class="fpd-input" type="date" @bind="_fpd.DataSolicitado" /></div>
+            </div>
+
+            <label class="fpd-check fpd-check-destaque">
+                <input type="checkbox" @bind="_fpd.PrimeiroDesembolso" @bind:after="AoMudarPrimeiroDesembolso" />
+                <span>Este é o primeiro desembolso deste contrato</span>
+            </label>
+
+            <div class="fpd-agentes">
+                @CampoAgente("Agente Financeiro", _fpd.AgenteFinanceiro, v => _fpd.AgenteFinanceiro = v, _fpd.CnpjAgenteFinanceiro, v => _fpd.CnpjAgenteFinanceiro = v)
+                @CampoAgente("Tomador / Mutuário", _fpd.Tomador, v => _fpd.Tomador = v, _fpd.CnpjTomador, v => _fpd.CnpjTomador = v)
+                @CampoAgente("Agente Técnico OP", _fpd.AgenteTecnico, v => _fpd.AgenteTecnico = v, _fpd.CnpjAgenteTecnico, v => _fpd.CnpjAgenteTecnico = v)
+                @CampoAgente("Agente Promotor", _fpd.AgentePromotor, v => _fpd.AgentePromotor = v, _fpd.CnpjAgentePromotor, v => _fpd.CnpjAgentePromotor = v)
+                <div class="fpd-campo fpd-campo-cheio"><label class="fpd-label">Programa (automático)</label>
+                    <input class="fpd-input" value="@_fpd.Programa" readonly placeholder="preenchido pela busca do contrato" /></div>
+            </div>
+            <div class="fpd-grid4">
+                <div class="fpd-campo"><label class="fpd-label">DT Emissão Eng.</label>
+                    <input class="fpd-input" type="date" @bind="_fpd.DataEmissaoEng" /></div>
+                <div class="fpd-campo"><label class="fpd-label">Situação de obra</label>
+                    <input class="fpd-input" @bind="_fpd.SituacaoObra" /></div>
+                <div class="fpd-campo">
+                    <label class="fpd-label">DT Sócio-ambiental</label>
+                    <div class="fpd-data-nsa">
+                        <input class="fpd-input" type="date" @bind="_fpd.DataEmissaoSocioAmb" disabled="@_fpd.Nsa" />
+                        <label class="fpd-check fpd-check-inline">
+                            <input type="checkbox" @bind="_fpd.Nsa" /> <span>NSA</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="fpd-campo"><label class="fpd-label">% de obra</label>
+                    <input class="fpd-input" type="number" step="0.01" @bind="_fpd.PercObra" @bind:after="InvalidarValidacao" /></div>
+            </div>
+        </div>
+
+        <!-- ═══ VERIFICAÇÕES (árvore) ═══ -->
+        <div class="fpd-grupo-head"><i class="bi bi-check2-square"></i><span>Verificações</span>
+            <span class="fpd-grupo-hint">clique no item para comentar</span></div>
+        <div class="fpd-arvore">
+            @ItemToggle("2.1", "ultimo", "Último desembolso", () => _fpd.UltimoDesembolso, v => _fpd.UltimoDesembolso = v, false,
+                @<text>
+                    @if (_fpd.UltimoDesembolso == "sim")
+                    {
+                        <div class="fpd-subtoggles">
+                            <div class="fpd-sn-item"><label class="fpd-label">Funcionalidade</label>
+                                <ToggleSimNao @bind-Value="_fpd.Funcionalidade" AoAlterar="InvalidarValidacao" /></div>
+                            <div class="fpd-sn-item"><label class="fpd-label">Conclusão</label>
+                                <ToggleSimNao @bind-Value="_fpd.Conclusao" AoAlterar="InvalidarValidacao" /></div>
+                        </div>
+                    }
+                </text>, _fpd.PrimeiroDesembolso)
+            @ItemToggle("2.2", "licoperacao", "Licença de operação", () => _fpd.LicencaOperacao, v => _fpd.LicencaOperacao = v, true, null)
+            @ItemToggle("2.3", "licinstalacao", "Licença de instalação", () => _fpd.LicencaInstalacao, v => _fpd.LicencaInstalacao = v, true, null)
+            @ItemToggle("2.4", "tomadoradimp", "Tomador adimplente", () => _fpd.TomadorAdimplente, v => _fpd.TomadorAdimplente = v, false, null)
+            @ItemToggle("2.5", "promotoradimp", "Agente Promotor adimplente", () => _fpd.PromotorAdimplente, v => _fpd.PromotorAdimplente = v, false, null)
+            @ItemToggle("2.6", "placa", "Placa local", () => _fpd.PlacaLocal, v => _fpd.PlacaLocal = v, false, null)
+            @ItemToggle("2.7", "retorno", "Retorno parcial", () => _fpd.RetornoParcial, v => _fpd.RetornoParcial = v, false, null)
+            @ItemToggle("2.8", "excep", "Excepcionalização", () => _fpd.Excepcionalizacao, v => _fpd.Excepcionalizacao = v, false, null)
+            @ItemToggle("2.9", "cpalterada", "CP alterada", () => _fpd.CpAlterada, v => _fpd.CpAlterada = v, false, null)
+        </div>
+
+        <div class="fpd-grupo-campos">
+            <div class="fpd-campo fpd-campo-cheio"><label class="fpd-label">INSS OBS</label>
+                <textarea class="fpd-input fpd-textarea-sm" @bind="_fpd.InssObs"></textarea></div>
+        </div>
+
+        <!-- ═══ VALORES ═══ -->
+        <div class="fpd-grupo-head"><i class="bi bi-cash-stack"></i><span>Valores</span></div>
+        <div class="fpd-grupo-campos">
+            <div class="fpd-tipo-linha">
+                <div class="fpd-campo"><label class="fpd-label">Tipo de desembolso</label>
+                    <select class="fpd-input" @bind="_fpd.TipoDesembolso">
+                        <option value="normal">Normal</option>
+                        <option value="adiantamento">Adiantamento</option>
+                    </select></div>
+            </div>
+            <div class="fpd-grid3">
+                <div class="fpd-campo"><label class="fpd-label">Solicitado VI</label><CampoMoeda @bind-Value="_fpd.SolicitadoVi" /></div>
+                <div class="fpd-campo"><label class="fpd-label">Glosado VI</label><CampoMoeda @bind-Value="_fpd.GlosadoVi" /></div>
+                <div class="fpd-campo"><label class="fpd-label">Aceito VI</label><CampoMoeda @bind-Value="_fpd.AceitoVi" /></div>
+                <div class="fpd-campo"><label class="fpd-label">Participação FGTS <span class="fpd-obrigatorio">*</span></label><CampoMoeda @bind-Value="_fpd.ParticipacaoFgts" AoAlterar="InvalidarValidacao" /></div>
+                <div class="fpd-campo"><label class="fpd-label">Contrapartida</label><CampoMoeda @bind-Value="_fpd.Contrapartida" AoAlterar="InvalidarValidacao" /></div>
+                <div class="fpd-campo"><label class="fpd-label">VE (Valor Empréstimo) <span class="fpd-obrigatorio">*</span></label><CampoMoeda @bind-Value="_fpd.Ve" AoAlterar="InvalidarValidacao" /></div>
+                <div class="fpd-campo"><label class="fpd-label">CP Atual</label><CampoMoeda @bind-Value="_fpd.CpAtual" /></div>
+                <div class="fpd-campo"><label class="fpd-label">Desembolsado</label><CampoMoeda @bind-Value="_fpd.Desembolsado" /></div>
+                <div class="fpd-campo"><label class="fpd-label">Integralizado</label><CampoMoeda @bind-Value="_fpd.Integralizado" /></div>
+                <div class="fpd-campo"><label class="fpd-label">Parcela FGTS</label><CampoMoeda @bind-Value="_fpd.ParcelaFgts" /></div>
+                <div class="fpd-campo"><label class="fpd-label">Integralizar</label><CampoMoeda @bind-Value="_fpd.Integralizar" /></div>
+                <div class="fpd-campo"><label class="fpd-label">Saldo a desembolsar</label><CampoMoeda @bind-Value="_fpd.SaldoDesembolsar" /></div>
+                <div class="fpd-campo"><label class="fpd-label">Saldo a integralizar</label><CampoMoeda @bind-Value="_fpd.SaldoIntegralizar" /></div>
+            </div>
+            @if (_fpd.TemValoresFinanceiros)
+            {
+                <div class="fpd-perc">
+                    <div class="fpd-perc-titulo">Percentuais</div>
+                    <div class="fpd-perc-linha"><span>FGTS</span><strong>@FmtPerc(_fpd.PercFgts)</strong></div>
+                    <div class="fpd-perc-linha"><span>Contrapartida</span><strong>@FmtPerc(_fpd.PercContrapartida)</strong></div>
+                    <div class="fpd-perc-linha global"><span>Global</span><strong>@FmtPerc(_fpd.PercGlobal)</strong></div>
+                </div>
+            }
+            <div class="fpd-campo fpd-campo-cheio" style="margin-top:10px">
+                <label class="fpd-label">OBS AF</label>
+                <textarea class="fpd-input fpd-textarea" @bind="_fpd.ObsAf"></textarea>
+            </div>
+        </div>
+
+        <!-- Resultado da validação -->
+        @if (_validando || _etapas.Any())
+        {
+            <div class="fpd-validacao">
+                <div class="fpd-validacao-header">
+                    <span>Consulta prévia no sistema</span>
+                    @if (_status == StatusValidacao.Aprovado)  { <span class="fpd-validacao-tag ok">100% validado</span> }
+                    @if (_status == StatusValidacao.Reprovado) { <span class="fpd-validacao-tag falha">pendências encontradas</span> }
+                </div>
+                <div class="fpd-linha-progresso @(_validando ? "ativa" : "")"></div>
+                <div class="fpd-validacao-lista">
+                    @foreach (var etapa in _etapas)
+                    {
+                        <div class="fpd-etapa @etapa.Estado">
+                            @if (etapa.Estado == "executando") { <i class="bi bi-arrow-repeat spin"></i> }
+                            else if (etapa.Estado == "ok")     { <i class="bi bi-check-circle-fill"></i> }
+                            else                               { <i class="bi bi-x-circle-fill"></i> }
+                            <span>@etapa.Texto</span>
+                            @if (!string.IsNullOrEmpty(etapa.Detalhe)) { <span class="fpd-etapa-detalhe">@etapa.Detalhe</span> }
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+
+    <div class="dialog-fpd-rodape">
+        <div class="dialog-fpd-acoes">
+            <button class="btn-fpd-cancelar" @onclick="AoVoltar" disabled="@(_validando || _solicitando)">Cancelar</button>
+            <button class="btn-fpd-validar" @onclick="Validar" disabled="@(_validando || _solicitando)">
+                @if (_validando) { <i class="bi bi-arrow-repeat spin"></i> <span>Validando…</span> }
+                else            { <i class="bi bi-shield-check"></i> <span>Validar</span> }
+            </button>
+            <button class="btn-fpd-solicitar" @onclick="Solicitar"
+                    disabled="@(_status != StatusValidacao.Aprovado || _solicitando)"
+                    title="@(_status == StatusValidacao.Aprovado ? "Enviar solicitação" : "Valide antes de solicitar")">
+                @if (_solicitando) { <i class="bi bi-arrow-repeat spin"></i> <span>Solicitando…</span> }
+                else              { <i class="bi bi-send-check"></i> <span>Solicitar Desembolso</span> }
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public EventCallback AoVoltar { get; set; }
+    [Parameter, EditorRequired] public EventCallback<PreenchimentoFpd> AoSolicitar { get; set; }
+
+    private enum StatusValidacao { Nenhum, Aprovado, Reprovado }
+    private sealed class Etapa { public string Texto = ""; public string Estado = "executando"; public string Detalhe = ""; }
+
+    private readonly PreenchimentoFpd _fpd = new();
+    private ElementReference _corpoRef;
+    private readonly HashSet<string> _itensAbertos = [];
+    private readonly Dictionary<string, List<Comentario>> _comentarios = new();
+
+    private bool _validando, _solicitando, _buscando, _buscaOk;
+    private string? _msgBusca;
+    private StatusValidacao _status = StatusValidacao.Nenhum;
+    private readonly List<Etapa> _etapas = [];
+
+    protected override void OnInitialized() => _fpd.Solicitante = ServicoUsuario.Matricula;
+
+    private static string FmtPerc(decimal? p) => p is null ? "—" : $"{p.Value.ToString("0.000", new CultureInfo("pt-BR"))}%";
+
+    private RenderFragment CampoAgente(string rotulo, string valor, Action<string> setValor, string cnpj, Action<string> setCnpj) =>
+        @<div class="fpd-campo">
+            <label class="fpd-label">@rotulo</label>
+            <div class="fpd-agente-linha">
+                <input class="fpd-input" value="@valor" @onchange="e => setValor(e.Value?.ToString() ?? string.Empty)" />
+                <input class="fpd-input fpd-cnpj" placeholder="CNPJ" value="@cnpj" @onchange="e => setCnpj(e.Value?.ToString() ?? string.Empty)" />
+            </div>
+        </div>;
+
+    // Item da árvore (verificação Sim/Não). Título/chevron expande; toggle é independente.
+    // Sem coloração verde/vermelho por resposta — só um indicador neutro de "respondido".
+    private RenderFragment ItemToggle(string num, string chave, string titulo, Func<string?> get, Action<string?> set,
+        bool comNsa, RenderFragment? extra, bool readOnly = false) =>
+        @<div class="fpd-tree-item @(get() is not null ? "respondido" : "") @(_itensAbertos.Contains(chave) ? "aberto" : "")">
+            <div class="fpd-tree-head">
+                <button class="fpd-tree-abrir" @onclick="() => AlternarItem(chave)">
+                    <span class="fpd-tree-num">@num</span>
+                    <span class="fpd-tree-titulo">@titulo</span>
+                </button>
+                <ToggleSimNao Value="@get()" ValueChanged="v => DefinirItem(chave, v, set)" ComNsa="comNsa" ReadOnly="readOnly" />
+                @if (ObterComentarios(chave).Count > 0) { <span class="fpd-tree-comm"><i class="bi bi-chat-text-fill"></i>@ObterComentarios(chave).Count</span> }
+                <button class="fpd-tree-chevron-btn" @onclick="() => AlternarItem(chave)" title="Comentar">
+                    <i class="bi bi-chevron-@(_itensAbertos.Contains(chave) ? "up" : "down")"></i>
+                </button>
+            </div>
+            <div class="acc-body @(_itensAbertos.Contains(chave) ? "aberto" : "")">
+                <div class="acc-inner">
+                    <div class="fpd-tree-corpo">
+                        @extra
+                        <FioComentario Comentarios="ObterComentarios(chave)" ApenasInformativo="true" AoAdicionarComentario="c => AddComentario(chave, c)" />
+                    </div>
+                </div>
+            </div>
+        </div>;
+
+    // Clique no Sim/Não/NSA: ARMAZENA o valor no _fpd (a classe PreenchimentoFpd
+    // que é enviada como parâmetro para a API na validação). Aqui ficaria uma
+    // eventual consulta/persistência POR ITEM — deixada comentada.
+    private void DefinirItem(string chave, string? valor, Action<string?> set)
+    {
+        set(valor);              // grava na classe que vai para a API
+        InvalidarValidacao();    // mudou algo → precisa revalidar
+
+        // ── Chamada de endpoint por item (quando/se necessário) ──
+        // Ex.: registrar/checar cada resposta individualmente no servidor.
+        // await Http.PostAsJsonAsync("api/fpd/item", new { Chave = chave, Valor = valor, ContratoAf = _fpd.ContratoAf });
+
+        StateHasChanged();
+    }
+
+    private void AlternarItem(string chave) { if (!_itensAbertos.Remove(chave)) _itensAbertos.Add(chave); }
+    private List<Comentario> ObterComentarios(string chave) => _comentarios.TryGetValue(chave, out var l) ? l : (_comentarios[chave] = []);
+    private void AddComentario(string chave, Comentario c) => ObterComentarios(chave).Add(c);
+
+    private async Task BuscarContrato()
+    {
+        if (_buscando || string.IsNullOrWhiteSpace(_fpd.ContratoAf)) return;
+        _buscando = true; _msgBusca = null; StateHasChanged();
+        try
+        {
+            var resp = await Http.GetAsync($"api/fpd/contrato?af={Uri.EscapeDataString(_fpd.ContratoAf)}");
+            if (resp.IsSuccessStatusCode)
+            {
+                var c = await resp.Content.ReadFromJsonAsync<ContratoAfDto>();
+                if (c is not null) PreencherDeContrato(c);
+                _buscaOk = true; _msgBusca = "Contrato encontrado — campos preenchidos.";
+            }
+            else { _buscaOk = false; _msgBusca = "Contrato não encontrado — preencha manualmente."; }
+        }
+        catch (Exception ex) { _buscaOk = false; _msgBusca = "Falha na consulta."; Console.WriteLine($"[FPD] {ex.Message}"); }
+        finally { _buscando = false; InvalidarValidacao(); StateHasChanged(); }
+    }
+
+    private void PreencherDeContrato(ContratoAfDto c)
+    {
+        _fpd.ContratoAf = c.ContratoAf; _fpd.Gigov = c.Gigov;
+        _fpd.AgenteFinanceiro = c.AgenteFinanceiro; _fpd.CnpjAgenteFinanceiro = c.CnpjAgenteFinanceiro;
+        _fpd.Tomador = c.Tomador; _fpd.CnpjTomador = c.CnpjTomador;
+        _fpd.AgentePromotor = c.AgentePromotor; _fpd.CnpjAgentePromotor = c.CnpjAgentePromotor;
+        _fpd.Programa = c.Programa; _fpd.Ve = c.Ve; _fpd.CpAtual = c.CpAtual;
+        _fpd.Desembolsado = c.Desembolsado; _fpd.Integralizado = c.Integralizado;
+        _fpd.SaldoDesembolsar = c.SaldoDesembolsar; _fpd.SaldoIntegralizar = c.SaldoIntegralizar;
+        _fpd.PercObra = c.PercObra; _fpd.SituacaoObra = c.SituacaoObra;
+    }
+
+    private async Task Validar()
+    {
+        if (_validando) return;
+        _validando = true; _status = StatusValidacao.Nenhum; _etapas.Clear(); StateHasChanged();
+        try
+        {
+            var resposta = await Http.PostAsJsonAsync("api/fpd/validar", MontarRequisicao());
+            resposta.EnsureSuccessStatusCode();
+            var r = await resposta.Content.ReadFromJsonAsync<ValidacaoFpdResultado>() ?? new();
+            foreach (var e in r.Etapas)
+            {
+                var etapa = new Etapa { Texto = e.Texto };
+                _etapas.Add(etapa); StateHasChanged();
+                await RolarAoFim(); await Task.Delay(240);
+                etapa.Estado = e.Ok ? "ok" : "falha"; etapa.Detalhe = e.Detalhe; StateHasChanged();
+                await RolarAoFim();
+            }
+            _status = r.Aprovado ? StatusValidacao.Aprovado : StatusValidacao.Reprovado;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[FPD] Validar: {ex.Message}");
+            _etapas.Add(new Etapa { Estado = "falha", Texto = "Falha na consulta", Detalhe = "tente novamente" });
+            _status = StatusValidacao.Reprovado;
+        }
+        finally { _validando = false; StateHasChanged(); }
+    }
+
+    private async Task RolarAoFim() { try { await JS.InvokeVoidAsync("sipubScrollFim", _corpoRef); } catch { } }
+
+    private ValidacaoFpdRequest MontarRequisicao() => new()
+    {
+        Gigov = _fpd.Gigov, ContratoAf = _fpd.ContratoAf, Tomador = _fpd.Tomador,
+        Ve = _fpd.Ve, ParticipacaoFgts = _fpd.ParticipacaoFgts, Contrapartida = _fpd.Contrapartida, PercObra = _fpd.PercObra,
+        UltimoDesembolso = _fpd.UltimoDesembolso, Funcionalidade = _fpd.Funcionalidade, Conclusao = _fpd.Conclusao,
+        PlacaLocal = _fpd.PlacaLocal, TomadorAdimplente = _fpd.TomadorAdimplente, PromotorAdimplente = _fpd.PromotorAdimplente,
+    };
+
+    private void InvalidarValidacao()
+    {
+        if (_status != StatusValidacao.Nenhum || _etapas.Count > 0) { _status = StatusValidacao.Nenhum; _etapas.Clear(); }
+    }
+
+    // Primeiro desembolso não tem "último desembolso" a comparar — força "não" e
+    // trava o item na árvore (some também Funcionalidade/Conclusão, que só fazem
+    // sentido quando há um desembolso anterior).
+    private void AoMudarPrimeiroDesembolso()
+    {
+        if (_fpd.PrimeiroDesembolso)
+        {
+            _fpd.UltimoDesembolso = "nao";
+            _fpd.Funcionalidade   = null;
+            _fpd.Conclusao        = null;
+        }
+        InvalidarValidacao();
+    }
+
+    private async Task Solicitar()
+    {
+        if (_status != StatusValidacao.Aprovado || _solicitando) return;
+        _solicitando = true;
+        try
+        {
+            // Requisição já pronta com todos os binds (marcado/não marcado) do
+            // formulário — falta apenas o endpoint definitivo no servidor.
+            var req = MontarRequisicaoSolicitacao();
+            var resposta = await Http.PostAsJsonAsync("api/fpd/solicitar", req);
+            if (!resposta.IsSuccessStatusCode)
+                Console.WriteLine($"[FPD] Endpoint de solicitação ainda não disponível ({(int)resposta.StatusCode}).");
+        }
+        catch (Exception ex)
+        {
+            // Endpoint futuro — falha aqui não deve travar o fluxo local.
+            Console.WriteLine($"[FPD] Solicitar: {ex.Message}");
+        }
+        finally
+        {
+            await AoSolicitar.InvokeAsync(_fpd);
+            _solicitando = false;
+        }
+    }
+
+    private SolicitacaoFpdRequest MontarRequisicaoSolicitacao() => new()
+    {
+        Solicitante = _fpd.Solicitante, Gigov = _fpd.Gigov, Gestor = _fpd.Gestor,
+        IdFpd = _fpd.IdFpd, NumeroFpd = _fpd.NumeroFpd, ContratoAf = _fpd.ContratoAf,
+        DataSolicitado = _fpd.DataSolicitado, PrimeiroDesembolso = _fpd.PrimeiroDesembolso,
+
+        AgenteFinanceiro = _fpd.AgenteFinanceiro, CnpjAgenteFinanceiro = _fpd.CnpjAgenteFinanceiro,
+        Tomador = _fpd.Tomador, CnpjTomador = _fpd.CnpjTomador,
+        AgenteTecnico = _fpd.AgenteTecnico, CnpjAgenteTecnico = _fpd.CnpjAgenteTecnico,
+        AgentePromotor = _fpd.AgentePromotor, CnpjAgentePromotor = _fpd.CnpjAgentePromotor,
+        Programa = _fpd.Programa,
+
+        UltimoDesembolso = _fpd.UltimoDesembolso, Funcionalidade = _fpd.Funcionalidade, Conclusao = _fpd.Conclusao,
+        TomadorAdimplente = _fpd.TomadorAdimplente, PromotorAdimplente = _fpd.PromotorAdimplente,
+        RetornoParcial = _fpd.RetornoParcial, PlacaLocal = _fpd.PlacaLocal,
+        LicencaInstalacao = _fpd.LicencaInstalacao, LicencaOperacao = _fpd.LicencaOperacao,
+        Excepcionalizacao = _fpd.Excepcionalizacao, CpAlterada = _fpd.CpAlterada,
+
+        DataEmissaoEng = _fpd.DataEmissaoEng, SituacaoObra = _fpd.SituacaoObra,
+        DataEmissaoSocioAmb = _fpd.DataEmissaoSocioAmb, Nsa = _fpd.Nsa,
+        PercObra = _fpd.PercObra, TipoDesembolso = _fpd.TipoDesembolso, ObsAf = _fpd.ObsAf, InssObs = _fpd.InssObs,
+
+        SolicitadoVi = _fpd.SolicitadoVi, GlosadoVi = _fpd.GlosadoVi, AceitoVi = _fpd.AceitoVi,
+        ParticipacaoFgts = _fpd.ParticipacaoFgts, Contrapartida = _fpd.Contrapartida, Ve = _fpd.Ve,
+        CpAtual = _fpd.CpAtual, Desembolsado = _fpd.Desembolsado, Integralizado = _fpd.Integralizado,
+        ParcelaFgts = _fpd.ParcelaFgts, Integralizar = _fpd.Integralizar,
+        SaldoDesembolsar = _fpd.SaldoDesembolsar, SaldoIntegralizar = _fpd.SaldoIntegralizar,
+    };
+}
+
+<style>
+.overlay-fpd { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 2000; animation: fadeIn .15s ease; }
+
+.dialog-fpd {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: min(920px, calc(100vw - 32px)); max-height: calc(100vh - 40px);
+    display: flex; flex-direction: column;
+    background: #fff; border: 1px solid var(--ink-100); border-radius: var(--radius-xl);
+    box-shadow: 0 24px 60px rgba(0,0,0,.25); z-index: 2001; overflow: hidden; animation: fpdFade .15s ease;
+}
+@@keyframes fpdFade { from { opacity: 0; } to { opacity: 1; } }
+
+.dialog-fpd-header { display: flex; align-items: center; gap: 12px; padding: 16px 22px 14px; border-bottom: 1px solid var(--ink-100); background: var(--ink-50); flex-shrink: 0; }
+.dialog-fpd-icone { width: 38px; height: 38px; background: var(--brand-50); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--brand-700); font-size: 17px; }
+.dialog-fpd-titulo { font-size: 16px; font-weight: 700; color: var(--ink-900); letter-spacing: .02em; }
+.dialog-fpd-subtitulo { font-size: 11.5px; color: var(--ink-500); margin-top: 1px; }
+.dialog-fpd-fechar { margin-left: auto; color: var(--ink-500); font-size: 16px; padding: 4px; }
+.dialog-fpd-fechar:hover { color: var(--ink-900); }
+
+.dialog-fpd-corpo { padding: 8px 24px 20px; overflow-y: auto; }
+
+/* Cabeçalho de grupo (rótulo, como "SUB-VALIDAÇÕES") */
+.fpd-grupo-head { display: flex; align-items: center; gap: 8px; margin: 20px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--ink-100); }
+.fpd-grupo-head i { font-size: 14px; color: var(--brand-700); }
+.fpd-grupo-head span { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-500); }
+.fpd-grupo-hint { margin-left: auto; text-transform: none !important; letter-spacing: 0 !important; font-weight: 500 !important; color: var(--ink-400, var(--ink-300)) !important; }
+
+.fpd-grupo-campos { display: flex; flex-direction: column; gap: 14px; }
+
+/* Campos */
+.fpd-campo { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.fpd-campo-cheio { grid-column: 1 / -1; }
+.fpd-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-500); }
+.fpd-obrigatorio { color: var(--err); }
+.fpd-input { height: 32px; padding: 0 10px; border: 1px solid var(--ink-200); border-radius: var(--radius-md); font-size: 12.5px; font-family: inherit; color: var(--ink-900); background: #fff; min-width: 0; }
+.fpd-input:focus { outline: none; border-color: var(--brand-500); box-shadow: 0 0 0 3px rgba(45,138,216,.15); }
+.fpd-input[readonly] { background: var(--ink-50); color: var(--ink-700); }
+.fpd-input-moeda { text-align: right; font-variant-numeric: tabular-nums; }
+.fpd-textarea { min-height: 56px; height: auto; padding: 8px 10px; resize: vertical; }
+.fpd-textarea-sm { min-height: 42px; height: auto; padding: 8px 10px; resize: vertical; }
+
+.fpd-ident { display: grid; grid-template-columns: 2fr 1fr 1.2fr 1.2fr 1fr; gap: 10px; }
+.fpd-af-linha { display: flex; gap: 6px; } .fpd-af-linha .fpd-input { flex: 1; }
+.fpd-btn-buscar { display: inline-flex; align-items: center; gap: 5px; background: var(--brand-700); color: #fff; border-radius: var(--radius-md); padding: 0 12px; font-size: 11.5px; font-weight: 600; flex-shrink: 0; }
+.fpd-btn-buscar:hover:not(:disabled) { background: var(--brand-800); } .fpd-btn-buscar:disabled { opacity: .6; }
+.fpd-msg-busca { font-size: 10.5px; margin-top: 2px; } .fpd-msg-busca.ok { color: var(--ok); } .fpd-msg-busca.falha { color: var(--warn); }
+
+.fpd-agentes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.fpd-agente-linha { display: grid; grid-template-columns: 1.6fr 1fr; gap: 6px; }
+.fpd-cnpj { font-variant-numeric: tabular-nums; }
+.fpd-grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.fpd-grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.fpd-tipo-linha { display: grid; grid-template-columns: 240px; }
+.fpd-check { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-900); cursor: pointer; }
+.fpd-check input { width: 15px; height: 15px; accent-color: var(--brand-700); }
+.fpd-check-destaque { margin-top: 14px; padding: 10px 12px; background: var(--brand-50); border: 1px solid var(--brand-100); border-radius: var(--radius-md); font-weight: 600; }
+.fpd-check-inline { white-space: nowrap; }
+
+/* DT Sócio-ambiental + NSA na mesma linha */
+.fpd-data-nsa { display: flex; align-items: center; gap: 8px; }
+.fpd-data-nsa .fpd-input { flex: 1; min-width: 0; }
+.fpd-data-nsa .fpd-input:disabled { background: var(--ink-50); color: var(--ink-400, var(--ink-300)); }
+
+/* ── ÁRVORE (linha lateral + itens numerados) ── */
+.fpd-arvore {
+    position: relative;
+    margin-left: 4px;
+    padding-left: 16px;
+    border-left: 2px solid var(--ink-200);
+    display: flex;
+    flex-direction: column;
+}
+.fpd-tree-item { position: relative; border-bottom: 1px solid var(--ink-100); }
+.fpd-tree-item:last-child { border-bottom: none; }
+/* conector horizontal saindo da linha lateral — neutro, só indica "respondido" */
+.fpd-tree-item::before { content: ''; position: absolute; left: -16px; top: 21px; width: 13px; height: 2px; background: var(--ink-200); }
+.fpd-tree-item.respondido::before { background: var(--brand-500); }
+
+.fpd-tree-head { display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 0; border-radius: var(--radius-md); }
+.fpd-tree-item.aberto > .fpd-tree-head { background: var(--brand-50); }
+
+/* Botão que expande (número + título) — ocupa o espaço à esquerda.
+   Sem hover próprio: o item "aberto" já tem o fundo azul claro em .fpd-tree-head;
+   um hover branco por cima criava um remendo claro no meio do azul. */
+.fpd-tree-abrir { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; padding: 4px 8px 4px 12px; background: transparent; text-align: left; cursor: pointer; border-radius: var(--radius-md); }
+
+.fpd-tree-num { flex-shrink: 0; padding: 2px 8px; height: 22px; min-width: 36px; border-radius: var(--radius-md); background: var(--ink-100); font-family: monospace; font-size: 11px; font-weight: 700; color: var(--ink-700); display: flex; align-items: center; justify-content: center; }
+.fpd-tree-item.respondido .fpd-tree-num { background: var(--brand-50); color: var(--brand-700); }
+.fpd-tree-titulo { flex: 1; font-size: 13px; font-weight: 500; color: var(--ink-900); line-height: 1.3; }
+.fpd-tree-resumo { font-size: 11.5px; color: var(--ink-500); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.fpd-tree-comm { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 700; color: var(--brand-700); flex-shrink: 0; }
+.fpd-tree-chevron-btn { flex-shrink: 0; width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-md); color: var(--ink-500); font-size: 12px; }
+.fpd-tree-chevron-btn:hover { background: var(--ink-100); color: var(--ink-900); }
+
+.fpd-tree-corpo { padding: 4px 12px 14px 44px; display: flex; flex-direction: column; gap: 12px; }
+.fpd-subtoggles { display: flex; gap: 16px; }
+.fpd-sn-item { display: flex; flex-direction: column; gap: 4px; }
+
+/* Percentuais */
+.fpd-perc { border: 1px solid var(--brand-100); border-radius: var(--radius-md); background: var(--brand-50); padding: 10px 12px; max-width: 360px; }
+.fpd-perc-titulo { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--brand-700); margin-bottom: 6px; }
+.fpd-perc-linha { display: flex; justify-content: space-between; padding: 3px 0; font-size: 12.5px; color: var(--ink-700); }
+.fpd-perc-linha strong { font-variant-numeric: tabular-nums; color: var(--ink-900); }
+.fpd-perc-linha.global { border-top: 1px solid var(--brand-100); margin-top: 4px; padding-top: 6px; }
+.fpd-perc-linha.global strong { color: var(--brand-800); }
+
+.fpd-validacao { margin-top: 18px; border: 1px solid var(--ink-100); border-radius: var(--radius-lg); overflow: hidden; background: #fff; }
+.fpd-validacao-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-500); background: #FAFBFC; }
+.fpd-validacao-tag { padding: 2px 10px; border-radius: var(--radius-full); font-size: 10px; font-weight: 700; }
+.fpd-validacao-tag.ok { background: var(--ok-bg); color: var(--ok); } .fpd-validacao-tag.falha { background: var(--err-bg); color: var(--err); }
+.fpd-linha-progresso { height: 3px; background: var(--ink-100); position: relative; overflow: hidden; opacity: 0; transition: opacity .2s; }
+.fpd-linha-progresso.ativa { opacity: 1; }
+.fpd-linha-progresso.ativa::before { content: ""; position: absolute; top: 0; bottom: 0; width: 40%; background: linear-gradient(90deg, transparent, var(--brand-500), var(--brand-700), transparent); animation: linhaCorrendo 1.1s ease-in-out infinite; }
+@@keyframes linhaCorrendo { 0% { left: -40%; } 100% { left: 100%; } }
+.fpd-validacao-lista { padding: 10px 14px 12px; display: flex; flex-direction: column; gap: 8px; }
+.fpd-etapa { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-700); }
+.fpd-etapa i { font-size: 14px; } .fpd-etapa.executando i { color: var(--brand-500); } .fpd-etapa.ok i { color: var(--ok); } .fpd-etapa.falha i { color: var(--err); }
+.fpd-etapa.falha { color: var(--err); font-weight: 500; }
+.fpd-etapa-detalhe { margin-left: auto; font-size: 11px; color: var(--ink-500); }
+.fpd-etapa.falha .fpd-etapa-detalhe { color: var(--err); font-weight: 600; }
+
+.dialog-fpd-rodape { padding: 12px 22px 14px; background: var(--ink-50); border-top: 1px solid var(--ink-100); flex-shrink: 0; }
+.dialog-fpd-aviso { font-size: 11.5px; color: var(--ink-500); display: flex; align-items: flex-start; gap: 6px; margin: 0 0 10px; }
+.dialog-fpd-acoes { display: flex; gap: 10px; justify-content: flex-end; }
+.btn-fpd-cancelar { border: 1px solid var(--ink-200); border-radius: var(--radius-md); padding: 8px 16px; font-size: 13px; color: var(--ink-500); background: none; }
+.btn-fpd-cancelar:hover:not(:disabled) { background: var(--ink-100); }
+.btn-fpd-validar { display: flex; align-items: center; gap: 6px; background: #fff; color: var(--brand-700); border: 1px solid var(--brand-500); border-radius: var(--radius-md); padding: 8px 16px; font-size: 12.5px; font-weight: 600; }
+.btn-fpd-validar:hover:not(:disabled) { background: var(--brand-50); } .btn-fpd-validar:disabled { opacity: .6; cursor: wait; }
+.btn-fpd-solicitar { display: flex; align-items: center; gap: 6px; background: var(--brand-700); color: #fff; border: none; border-radius: var(--radius-md); padding: 8px 18px; font-size: 12.5px; font-weight: 600; }
+.btn-fpd-solicitar:hover:not(:disabled) { background: var(--brand-800); } .btn-fpd-solicitar:disabled { opacity: .45; cursor: not-allowed; }
+.spin { animation: girar .8s linear infinite; display: inline-block; }
+
+@@media (max-width: 820px) {
+    .fpd-ident, .fpd-agentes, .fpd-grid4, .fpd-grid3 { grid-template-columns: 1fr 1fr; }
+    .fpd-cert-campos { grid-template-columns: 1fr; }
+    .fpd-tree-corpo { padding-left: 16px; }
+}
+</style>

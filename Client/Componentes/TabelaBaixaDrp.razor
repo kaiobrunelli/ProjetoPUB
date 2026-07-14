@@ -1,0 +1,342 @@
+@using System.Globalization
+
+<div class="drp">
+
+    <!-- Cabeçalho da tabela: título + ação BAIXA -->
+    <div class="drp-topo">
+        <div class="drp-topo-info">
+            <span class="drp-topo-titulo">Controle de baixa · DRP</span>
+            <span class="drp-topo-sub">
+                @_registros.Count @(_registros.Count == 1 ? "registro" : "registros")
+                @if (_selecionados.Count > 0)
+                {
+                    <span class="drp-topo-selecao">· @_selecionados.Count selecionado@(_selecionados.Count > 1 ? "s" : "")</span>
+                }
+            </span>
+        </div>
+        <button class="drp-btn-baixa" @onclick="AbrirBaixaSelecionados"
+                disabled="@(_selecionados.Count == 0)"
+                title="@(_selecionados.Count == 0 ? "Selecione ao menos um registro" : "Baixar selecionados")">
+            <i class="bi bi-check2-square"></i>
+            <span>Baixa</span>
+            @if (_selecionados.Count > 0)
+            {
+                <span class="drp-btn-baixa-num">@_selecionados.Count</span>
+            }
+        </button>
+    </div>
+
+    <!-- Tabela (scroll horizontal em telas pequenas) -->
+    <div class="drp-scroll">
+        <table class="drp-tabela">
+            <thead>
+                <tr>
+                    <th class="drp-col-check">
+                        <input type="checkbox"
+                               checked="@TodosSelecionados"
+                               @onchange="AlternarTodos"
+                               title="Selecionar todos aguardando baixa" />
+                    </th>
+                    <th>GIGOV</th>
+                    <th>Contrato (DV)</th>
+                    <th>Tipo</th>
+                    <th class="drp-num">Valor FGTS</th>
+                    <th>Solicitação</th>
+                    <th>Responsável</th>
+                    <th>Gestor</th>
+                    <th>Status</th>
+                    <th class="drp-col-acao"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var r in _registros)
+                {
+                    <tr class="@(_selecionados.Contains(r.Id) ? "drp-linha-sel" : "") @(r.Baixado ? "drp-linha-baixada" : "")">
+                        <td class="drp-col-check">
+                            <input type="checkbox"
+                                   checked="@_selecionados.Contains(r.Id)"
+                                   disabled="@r.Baixado"
+                                   @onchange="() => AlternarSelecao(r.Id)" />
+                        </td>
+                        <td><span class="drp-gigov">@r.Gigov</span></td>
+                        <td class="drp-mono">@r.ContratoDv</td>
+                        <td>
+                            <span class="drp-tipo drp-tipo-@r.TipoDesembolso">
+                                @(r.TipoDesembolso == "adiantamento" ? "Adiantamento" : "Normal")
+                            </span>
+                        </td>
+                        <td class="drp-num drp-valor">@r.ValorFgts.ToString("C", _br)</td>
+                        <td class="drp-mono-dim">@r.DataSolicitacao.ToString("dd/MM/yyyy")</td>
+                        <td class="drp-matricula">@r.Responsavel</td>
+                        <td class="drp-matricula">@r.Gestor</td>
+                        <td>
+                            @if (r.Baixado)
+                            {
+                                <span class="drp-status drp-status-ok" title="Baixado por @r.Baixa">
+                                    <i class="bi bi-check-circle-fill"></i> Baixado
+                                    <span class="drp-status-por">@r.Baixa</span>
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="drp-status drp-status-aguardando">
+                                    <i class="bi bi-clock"></i> Aguardando
+                                </span>
+                            }
+                        </td>
+                        <td class="drp-col-acao">
+                            <button class="drp-acao-ver" @onclick="() => AbrirResumo(r)" title="Ver resumo (checagem final)">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                            @if (!r.Baixado)
+                            {
+                                <button class="drp-acao-linha" @onclick="() => AbrirBaixaUnico(r.Id)" title="Baixar este">
+                                    <i class="bi bi-check2"></i>
+                                </button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@if (_dialogAberto)
+{
+    <DialogSenhaBaixa Quantidade="_idsParaBaixar.Count"
+                      AoCancelar="FecharDialog"
+                      AoConfirmar="ConfirmarBaixa" />
+}
+
+@if (_resumoDesembolso is not null)
+{
+    <!-- Checagem final: espelho do desembolso, somente leitura -->
+    <DialogDetalhesV2 Desembolso="_resumoDesembolso"
+                      Todos="_desembolsosParaResumo"
+                      SomenteLeitura="true"
+                      AoFechar="() => _resumoDesembolso = null"
+                      AoNavegar="id => _resumoDesembolso = _desembolsosParaResumo.FirstOrDefault(d => d.Id == id)" />
+}
+
+@code {
+    private static readonly CultureInfo _br = new("pt-BR");
+
+    private List<RegistroDrp> _registros = [];
+    private readonly HashSet<int> _selecionados = [];
+    private bool _dialogAberto;
+    private List<int> _idsParaBaixar = [];
+
+    // Resumo read-only (checagem final) — mapeia a linha DRP ao desembolso do "banco"
+    private readonly List<DesembolsoCAD> _desembolsosParaResumo = ServicoMock.ObterDesembolsos();
+    private DesembolsoCAD? _resumoDesembolso;
+
+    protected override void OnInitialized()
+    {
+        // Simula a consulta ao banco de dados
+        _registros = ServicoMock.ObterRegistrosDrp();
+    }
+
+    // Abre o espelho do desembolso correspondente à linha DRP (consulta ao banco)
+    private void AbrirResumo(RegistroDrp r)
+    {
+        _resumoDesembolso =
+            _desembolsosParaResumo.FirstOrDefault(d => r.ContratoDv.StartsWith(d.Contrato))
+            ?? _desembolsosParaResumo.FirstOrDefault();
+    }
+
+    private IEnumerable<RegistroDrp> Baixaveis => _registros.Where(r => !r.Baixado);
+    private bool TodosSelecionados => Baixaveis.Any() && Baixaveis.All(r => _selecionados.Contains(r.Id));
+
+    private void AlternarSelecao(int id)
+    {
+        if (!_selecionados.Remove(id))
+            _selecionados.Add(id);
+    }
+
+    private void AlternarTodos()
+    {
+        if (TodosSelecionados)
+            _selecionados.Clear();
+        else
+            foreach (var r in Baixaveis)
+                _selecionados.Add(r.Id);
+    }
+
+    // Baixa em lote (a partir da seleção)
+    private void AbrirBaixaSelecionados()
+    {
+        if (_selecionados.Count == 0) return;
+        _idsParaBaixar = _selecionados.ToList();
+        _dialogAberto = true;
+    }
+
+    // Baixa de um único (botão da linha)
+    private void AbrirBaixaUnico(int id)
+    {
+        _idsParaBaixar = [id];
+        _dialogAberto = true;
+    }
+
+    private void FecharDialog()
+    {
+        _dialogAberto = false;
+        _idsParaBaixar = [];
+    }
+
+    private void ConfirmarBaixa(string senha)
+    {
+        // Registra a baixa com a matrícula do usuário logado (mock)
+        var matricula = "c123456";
+        foreach (var r in _registros.Where(r => _idsParaBaixar.Contains(r.Id)))
+            r.Baixa = matricula;
+
+        foreach (var id in _idsParaBaixar)
+            _selecionados.Remove(id);
+
+        FecharDialog();
+    }
+}
+
+
+<style>
+.drp {
+    background: #fff;
+    border: 1px solid var(--ink-100);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-card);
+    overflow: hidden;
+}
+
+/* ── Topo: título + botão Baixa ── */
+.drp-topo {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--ink-100);
+    background: #FAFBFC;
+}
+.drp-topo-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.drp-topo-titulo {
+    font-size: 12.5px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .1em; color: var(--ink-500);
+}
+.drp-topo-sub { font-size: 11.5px; color: var(--ink-400, var(--ink-300)); }
+.drp-topo-selecao { color: var(--brand-700); font-weight: 600; }
+
+.drp-btn-baixa {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--ok); color: #fff;
+    border-radius: var(--radius-lg);
+    padding: 8px 16px;
+    font-size: 12.5px; font-weight: 700; font-family: inherit;
+    box-shadow: var(--shadow-card);
+    transition: background .15s, opacity .15s;
+    flex-shrink: 0;
+}
+.drp-btn-baixa:hover:not(:disabled) { background: #145f38; }
+.drp-btn-baixa:disabled { opacity: .4; cursor: not-allowed; }
+.drp-btn-baixa-num {
+    background: rgba(255,255,255,.25);
+    border-radius: var(--radius-full);
+    padding: 0 6px; font-size: 11px; font-weight: 800;
+    min-width: 18px; text-align: center;
+}
+
+/* ── Tabela ── */
+.drp-scroll { overflow-x: auto; }   /* rola em telas pequenas em vez de quebrar */
+
+.drp-tabela {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+    min-width: 860px;   /* abaixo disso, o .drp-scroll assume o scroll horizontal */
+}
+.drp-tabela thead th {
+    text-align: left;
+    padding: 10px 12px;
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .06em; color: var(--ink-500);
+    background: #fff;
+    border-bottom: 1px solid var(--ink-200);
+    white-space: nowrap;
+}
+.drp-tabela tbody td {
+    padding: 11px 12px;
+    border-bottom: 1px solid var(--ink-50);
+    color: var(--ink-900);
+    white-space: nowrap;
+}
+.drp-tabela tbody tr:hover { background: var(--ink-50); }
+.drp-tabela tbody tr.drp-linha-sel { background: var(--brand-50); }
+.drp-tabela tbody tr.drp-linha-sel:hover { background: var(--brand-100); }
+.drp-tabela tbody tr.drp-linha-baixada { opacity: .62; }
+
+.drp-col-check { width: 36px; text-align: center; }
+.drp-col-check input { width: 15px; height: 15px; accent-color: var(--brand-700); cursor: pointer; }
+.drp-col-check input:disabled { cursor: not-allowed; }
+.drp-col-acao { width: 40px; }
+
+.drp-num { text-align: right; }
+.drp-valor { font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.drp-gigov {
+    font-size: 10.5px; font-weight: 700; color: var(--brand-700);
+    background: var(--brand-50);
+    padding: 2px 8px; border-radius: var(--radius-full);
+}
+.drp-mono     { font-family: var(--font-mono, monospace); font-variant-numeric: tabular-nums; }
+.drp-mono-dim { font-variant-numeric: tabular-nums; color: var(--ink-700); }
+.drp-matricula {
+    font-family: var(--font-mono, monospace);
+    color: var(--ink-700);
+    letter-spacing: .02em;
+}
+
+.drp-tipo {
+    font-size: 10.5px; font-weight: 600;
+    padding: 2px 8px; border-radius: var(--radius-full);
+}
+.drp-tipo-normal       { background: var(--ink-100); color: var(--ink-700); }
+.drp-tipo-adiantamento { background: var(--warn-bg); color: #9A5B00; }
+
+.drp-status {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; font-weight: 600;
+    padding: 2px 8px; border-radius: var(--radius-full);
+}
+.drp-status i { font-size: 11px; }
+.drp-status-ok         { background: var(--ok-bg); color: var(--ok); }
+.drp-status-aguardando { background: var(--warn-bg); color: #9A5B00; }
+.drp-status-por {
+    font-family: var(--font-mono, monospace);
+    font-weight: 700; opacity: .8; margin-left: 2px;
+}
+
+.drp-acao-linha {
+    width: 26px; height: 26px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: var(--radius-md);
+    color: var(--ok); font-size: 14px;
+    transition: background .12s;
+}
+.drp-acao-linha:hover { background: var(--ok-bg); }
+
+.drp-acao-ver {
+    width: 26px; height: 26px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: var(--radius-md);
+    color: var(--brand-700); font-size: 14px;
+    transition: background .12s;
+}
+.drp-acao-ver:hover { background: var(--brand-50); }
+.drp-col-acao { white-space: nowrap; }
+
+/* Telas pequenas: aperta paddings; o scroll horizontal já garante que caiba */
+@@media (max-width: 900px) {
+    .drp-topo { flex-wrap: wrap; }
+    .drp-tabela thead th, .drp-tabela tbody td { padding: 9px 10px; }
+}
+</style>

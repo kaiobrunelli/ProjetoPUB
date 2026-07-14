@@ -1,0 +1,952 @@
+﻿@page "/2"
+@using System.Net.Http.Json
+@inject NavigationManager Nav
+@inject HttpClient Http
+@inject SignalRService Hub
+@inject ServicoUsuario ServicoUsuario
+@implements IDisposable
+<PageTitle>Análise de Desembolsos v2 — SIPUB</PageTitle>
+
+@{
+    var todos           = ServicoMock.ObterDesembolsos();
+    var totalVal        = todos.Sum(d => d.ValidacoesTotal);
+    var totalOk         = todos.Sum(d => d.ValidacoesOk);
+    var qtdPendencias   = todos.Count(d => d.Status == "pendencia");
+    var qtdPendentes    = todos.Count(d => d.Status == "pendente");
+    var qtdAprovados    = todos.Count(d => d.Status == "aprovado");
+
+    var filtrados = _filtroAtivo switch
+    {
+        "invalidos" => todos.Where(d => d.Status == "pendencia").ToList(),
+        "pendentes" => todos.Where(d => d.Status == "pendente").ToList(),
+        "validos"   => todos.Where(d => d.Status == "aprovado").ToList(),
+        "agendado"  => todos.Where(d => d.Status == "agendado").ToList(),
+        _           => todos
+    };
+    // var podePresentar = filtrados.Count >= 2;   // usado pelo botão Apresentação (desabilitado)
+
+    // Busca aplicada antes do agrupamento: grupos, contagens e estado vazio
+    // reagem juntos ao que foi digitado
+    var buscados = AplicarBusca(filtrados);
+
+    var grupoPendencias = buscados.Where(d => d.Status == "pendencia").ToList();
+    var grupoPendentes  = buscados.Where(d => d.Status == "pendente").ToList();
+    var grupoAprovados  = buscados.Where(d => d.Status == "aprovado").ToList();
+}
+
+<div class="pagina">
+
+    <!-- ══ Seção Header ══ -->
+    <section class="pagina-header-secao">
+        <div class="pagina-header-container">
+
+            <h1 class="pagina-titulo">
+                Análise de <span class="titulo-destaque">Desembolsos</span> <span class="titulo-v2-tag">v2</span>
+            </h1>
+
+            <!-- Stats Consolidado -->
+            <div class="stats-consolidado">
+                <div class="stats-consolidado-header">
+                    <span class="stats-consolidado-titulo">Relatório Consolidado</span>
+                </div>
+                <div class="stats-consolidado-cells">
+
+                    <div class="stats-cell">
+                        <div class="stats-cell-icon" style="background:#EBF5FF">
+                            <i class="bi bi-list-check" style="color:#005CA9;font-size:14px"></i>
+                        </div>
+                        <div>
+                            <div class="stats-cell-valor">@todos.Count</div>
+                            <div class="stats-cell-label">Total de contratos</div>
+                        </div>
+                    </div>
+
+                    <div class="stats-cell">
+                        <div class="stats-cell-icon" style="background:#FEF2F2">
+                            <i class="bi bi-exclamation-triangle" style="color:#C0392B;font-size:14px"></i>
+                        </div>
+                        <div>
+                            <div class="stats-cell-valor">@qtdPendencias</div>
+                            <div class="stats-cell-label">Com pendência</div>
+                        </div>
+                    </div>
+
+                    <div class="stats-cell">
+                        <div class="stats-cell-icon" style="background:#FFFBEB">
+                            <i class="bi bi-clock" style="color:#D87B00;font-size:14px"></i>
+                        </div>
+                        <div>
+                            <div class="stats-cell-valor">@qtdPendentes</div>
+                            <div class="stats-cell-label">Para analisar</div>
+                        </div>
+                    </div>
+
+                    <div class="stats-cell">
+                        <div class="stats-cell-icon" style="background:#F0FDF4">
+                            <i class="bi bi-check-circle" style="color:#1A7A4A;font-size:14px"></i>
+                        </div>
+                        <div>
+                            <div class="stats-cell-valor">@qtdAprovados</div>
+                            <div class="stats-cell-label">Aprovados</div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- ══ Barra de filtros + toolbar ══ -->
+    <div class="filtros-area">
+        <div class="filtros-container">
+
+            <!-- Pill segmentado -->
+            <div class="filtro-pill">
+                <button class="filtro-btn @(_filtroAtivo == "geral"     ? "filtro-btn-ativo" : "")" @onclick='() => _filtroAtivo = "geral"'>
+                    <span class="filtro-dot" style="background:#9EB2BB;opacity:@(_filtroAtivo=="geral"?"1":"0.5")"></span>
+                    Geral
+                    <span class="filtro-badge @(_filtroAtivo == "geral" ? "filtro-badge-ativo" : "")">@todos.Count</span>
+                </button>
+
+                <button class="filtro-btn @(_filtroAtivo == "invalidos" ? "filtro-btn-ativo" : "")" @onclick='() => _filtroAtivo = "invalidos"'>
+                    <span class="filtro-dot" style="background:#C0392B;opacity:@(_filtroAtivo=="invalidos"?"1":"0.5")"></span>
+                    Inválido
+                    @if (qtdPendencias > 0)
+                    {
+                        <span class="filtro-badge @(_filtroAtivo == "invalidos" ? "filtro-badge-ativo" : "")">@qtdPendencias</span>
+                    }
+                </button>
+
+                <button class="filtro-btn @(_filtroAtivo == "pendentes" ? "filtro-btn-ativo" : "")" @onclick='() => _filtroAtivo = "pendentes"'>
+                    <span class="filtro-dot" style="background:#D87B00;opacity:@(_filtroAtivo=="pendentes"?"1":"0.5")"></span>
+                    Analisar
+                    @if (qtdPendentes > 0)
+                    {
+                        <span class="filtro-badge @(_filtroAtivo == "pendentes" ? "filtro-badge-ativo" : "")">@qtdPendentes</span>
+                    }
+                </button>
+
+                <button class="filtro-btn @(_filtroAtivo == "validos"   ? "filtro-btn-ativo" : "")" @onclick='() => _filtroAtivo = "validos"'>
+                    <span class="filtro-dot" style="background:#1A7A4A;opacity:@(_filtroAtivo=="validos"?"1":"0.5")"></span>
+                    Válidos
+                    @if (qtdAprovados > 0)
+                    {
+                        <span class="filtro-badge @(_filtroAtivo == "validos" ? "filtro-badge-ativo" : "")">@qtdAprovados</span>
+                    }
+                </button>
+
+                <button class="filtro-btn @(_filtroAtivo == "agendado"  ? "filtro-btn-ativo" : "")" @onclick='() => _filtroAtivo = "agendado"'>
+                    <span class="filtro-dot" style="background:#2D8AD8;opacity:0.5"></span>
+                    Agendado
+                </button>
+            </div>
+
+            <!-- Toolbar direita -->
+            <div class="toolbar-dir">
+                @* Chip "Última Atualização" desabilitado temporariamente
+                <div class="chip-atualizacao">
+                    <span class="chip-atualizacao-dot"></span>
+                    Última Atualização: @DateTime.Now.ToString("dd/MM/yyyy")
+                </div>
+                *@
+
+                <div class="busca-tabela">
+                    <i class="bi bi-search"></i>
+                    <input type="text" placeholder="Buscar..." @bind="_textoBusca" @bind:event="oninput" />
+                </div>
+
+                <button class="btn-fpd" @onclick="() => _dialogFpdAberto = true" title="Registrar Ficha de Previsão de Desembolso">
+                    <i class="bi bi-clipboard-plus"></i>
+                    <span>Preencher FPD</span>
+                </button>
+
+                <button class="btn-processar @(_processando ? "btn-processando" : "")"
+                        @onclick="ExecutarMacro"
+                        disabled="@(_processando || _carregando)">
+                    @if (_processando)
+                    {
+                        <i class="bi bi-arrow-repeat spinner"></i>
+                        <span>Processando…</span>
+                    }
+                    else
+                    {
+                        <i class="bi bi-play-fill"></i>
+                        <span>Processar</span>
+                    }
+                </button>
+
+                @* Botão Apresentação desabilitado temporariamente — a página /apresentacao
+                   continua na aplicação (acessível pelo menu lateral) *@
+                <button class="btn-apresentacao btn-apresentacao-off"
+                        disabled
+                        title="Temporariamente indisponível">
+                    <i class="bi bi-easel2-fill"></i>
+                    <span>Apresentação</span>
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ══ Barra de progresso do processamento ══ -->
+    <BarraProgresso />
+
+    <!-- ══ Lista de contratos ══ -->
+    <div class="contratos-area">
+        <div class="contratos-container">
+
+            @if (_carregando)
+            {
+                <div class="skeletons">
+                    @for (int i = 0; i < 6; i++)
+                    {
+                        <div class="skeleton" style="height:56px;border-radius:var(--radius-xl)"></div>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="grupos-lista">
+
+                    <!-- Grupo: Inválidos -->
+                    @if (grupoPendencias.Any())
+                    {
+                        <section class="grupo-card">
+                            <div class="grupo-card-header @(_grupoPendenciasAberto ? "com-borda" : "")">
+                                <CabecalhoGrupo Titulo="Inválido"
+                                                Contagem="@grupoPendencias.Count"
+                                                Tipo="pendencia"
+                                                Aberto="@_grupoPendenciasAberto"
+                                                AoAlternar="@(v => _grupoPendenciasAberto = v)" />
+                            </div>
+                            <div class="acc-body @(_grupoPendenciasAberto ? "aberto" : "")">
+                                <div class="acc-inner">
+                                    @ColsHeader
+                                    @foreach (var d in grupoPendencias)
+                                    {
+                                        <LinhaContrato Desembolso="d"
+                                                      Analista="@ObterAnalista(d.Id)"
+                                                      Selecionada="@(_idDialogAberto == d.Id)"
+                                                      AoClicar="@(() => AbrirDialog(d.Id))"
+                                                      AoAtribuir="@((MouseEventArgs e) => { _idAtribuicao = d.Id; _popoverX = e.ClientX; _popoverY = e.ClientY; })" />
+                                    }
+                                </div>
+                            </div>
+                        </section>
+                    }
+
+                    <!-- Grupo: Analisar -->
+                    @if (grupoPendentes.Any())
+                    {
+                        <section class="grupo-card">
+                            <div class="grupo-card-header @(_grupoPendentesAberto ? "com-borda" : "")">
+                                <CabecalhoGrupo Titulo="Analisar"
+                                                Contagem="@grupoPendentes.Count"
+                                                Tipo="pendente"
+                                                Aberto="@_grupoPendentesAberto"
+                                                AoAlternar="@(v => _grupoPendentesAberto = v)" />
+                            </div>
+                            <div class="acc-body @(_grupoPendentesAberto ? "aberto" : "")">
+                                <div class="acc-inner">
+                                    @ColsHeader
+                                    @foreach (var d in grupoPendentes)
+                                    {
+                                        <LinhaContrato Desembolso="d"
+                                                      Analista="@ObterAnalista(d.Id)"
+                                                      Selecionada="@(_idDialogAberto == d.Id)"
+                                                      AoClicar="@(() => AbrirDialog(d.Id))"
+                                                      AoAtribuir="@((MouseEventArgs e) => { _idAtribuicao = d.Id; _popoverX = e.ClientX; _popoverY = e.ClientY; })" />
+                                    }
+                                </div>
+                            </div>
+                        </section>
+                    }
+
+                    <!-- Grupo: Aprovados -->
+                    @if (grupoAprovados.Any())
+                    {
+                        <section class="grupo-card">
+                            <div class="grupo-card-header @(_grupoAprovadosAberto ? "com-borda" : "")">
+                                <CabecalhoGrupo Titulo="Aprovado"
+                                                Contagem="@grupoAprovados.Count"
+                                                Tipo="aprovado"
+                                                Aberto="@_grupoAprovadosAberto"
+                                                AoAlternar="@(v => _grupoAprovadosAberto = v)" />
+                            </div>
+                            <div class="acc-body @(_grupoAprovadosAberto ? "aberto" : "")">
+                                <div class="acc-inner">
+                                    @ColsHeader
+                                    @foreach (var d in grupoAprovados)
+                                    {
+                                        <LinhaContrato Desembolso="d"
+                                                      Analista="@ObterAnalista(d.Id)"
+                                                      Selecionada="@(_idDialogAberto == d.Id)"
+                                                      AoClicar="@(() => AbrirDialog(d.Id))"
+                                                      AoAtribuir="@((MouseEventArgs e) => { _idAtribuicao = d.Id; _popoverX = e.ClientX; _popoverY = e.ClientY; })" />
+                                    }
+                                </div>
+                            </div>
+                        </section>
+                    }
+
+                    @if (!buscados.Any())
+                    {
+                        var buscando = !string.IsNullOrWhiteSpace(_textoBusca);
+                        var (emptyIcone, emptyTitulo, emptySub) = buscando
+                            ? ("bi-search", $"Nenhum resultado para \"{_textoBusca.Trim()}\"", "Busque por número do contrato, mutuário, GIGOV ou responsável.")
+                            : _filtroAtivo switch
+                            {
+                                "agendado"  => ("bi-calendar2-x",  "Nenhum desembolso agendado",       "Não há contratos com agendamento pendente no momento."),
+                                "invalidos" => ("bi-x-circle",     "Nenhuma pendência encontrada",      "Todos os contratos estão sem pendências críticas."),
+                                "pendentes" => ("bi-clock",        "Nenhum contrato para analisar",     "Não há contratos aguardando análise no momento."),
+                                "validos"   => ("bi-check-circle", "Nenhum contrato aprovado",          "Nenhum contrato atingiu o status de aprovado ainda."),
+                                _           => ("bi-folder2-open", "Nenhum contrato encontrado",        "Tente outro filtro.")
+                            };
+                        <div class="tabela-vazia">
+                            <i class="bi @emptyIcone"></i>
+                            <div class="tabela-vazia-titulo">@emptyTitulo</div>
+                            <div class="tabela-vazia-sub">@emptySub</div>
+                        </div>
+                    }
+
+                </div>
+            }
+
+        </div>
+    </div>
+
+</div>
+
+<!-- ── Popover de atribuição da lista ── -->
+@if (_idAtribuicao is not null)
+{
+    <div class="overlay-atrib" @onclick="() => _idAtribuicao = null"></div>
+    <div class="popover-atrib" style="left: @(Math.Max(4, _popoverX - 230))px; top: @(_popoverY + 6)px" @onclick:stopPropagation>
+        <div class="popover-atrib-titulo">Vincular responsável</div>
+        @foreach (var f in ServicoMock.ObterFuncionarios())
+        {
+            var ativo = ObterAnalista(_idAtribuicao)?.Id == f.Id;
+            var fLocal = f;
+            <button class="popover-atrib-item @(ativo ? "popover-atrib-item-ativo" : "")"
+                    @onclick="() => { AtribuirAnalista(_idAtribuicao, fLocal); _idAtribuicao = null; }">
+                <span class="popover-atrib-avatar" style="background:@fLocal.Cor">@fLocal.Iniciais</span>
+                <span class="popover-atrib-nome">@fLocal.Nome</span>
+                @if (ativo) { <i class="bi bi-check2 popover-atrib-check"></i> }
+            </button>
+        }
+        @if (ObterAnalista(_idAtribuicao) is not null)
+        {
+            <button class="popover-atrib-remover"
+                    @onclick="() => { AtribuirAnalista(_idAtribuicao, null); _idAtribuicao = null; }">
+                Remover atribuição
+            </button>
+        }
+    </div>
+}
+
+<!-- Dialog Preencher FPD -->
+@if (_dialogFpdAberto)
+{
+    <DialogPreencherFpd AoFechar="@(() => _dialogFpdAberto = false)"
+                        AoSolicitar="@SolicitarDesembolso" />
+}
+
+<!-- Dialog de detalhes -->
+@if (_idDialogAberto is not null)
+{
+    var desembolsoDialog = ServicoMock.ObterDesembolsos().FirstOrDefault(d => d.Id == _idDialogAberto);
+    if (desembolsoDialog is not null)
+    {
+        <DialogDetalhesV2 Desembolso="@desembolsoDialog"
+                        Todos="@buscados"
+                        Analista="@ObterAnalista(_idDialogAberto)"
+                        AoFechar="@FecharDialog"
+                        AoNavegar="@AbrirDialog"
+                        AoAtribuir="@(f => AtribuirAnalista(_idDialogAberto, f))" />
+    }
+}
+
+@code {
+    private string  _filtroAtivo           = "geral";
+    private string? _idDialogAberto        = null;
+    private string? _idAtribuicao          = null;
+    private double  _popoverX              = 0;
+    private double  _popoverY              = 0;
+    private string  _textoBusca            = "";
+    private bool    _grupoPendenciasAberto = true;
+    private bool    _grupoPendentesAberto  = true;
+    private bool    _grupoAprovadosAberto  = false;
+    private bool    _carregando            = true;
+    private bool    _processando           = false;
+    private bool    _dialogFpdAberto       = false;
+
+    private Dictionary<string, Funcionario> _atribuicoes = new();
+
+    // Cabeçalho de colunas reutilizado nos 3 grupos
+    private RenderFragment ColsHeader =>
+        @<div class="cols-header">
+            <span class="col-h" style="width:144px">Contrato</span>
+            <span class="col-h" style="width:208px">Mutuário</span>
+            <span class="col-h" style="width:80px;text-align:center">GIGOV</span>
+            <span class="col-h" style="width:112px;text-align:right">Valor</span>
+            <span class="col-h" style="width:128px;text-align:center">Aguardando</span>
+            <span class="col-h" style="width:128px">Situação</span>
+            <span class="col-h" style="width:80px;text-align:center">Prazo</span>
+            <span class="col-h" style="width:176px">Responsável</span>
+            <span class="col-h" style="width:20px"></span>
+        </div>;
+
+    [SupplyParameterFromQuery(Name = "contratoId")]
+    public string? ContratoIdQuery { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Hub.AoReceberProgresso += OnProgresso;
+        await Task.Delay(1200);
+        _carregando = false;
+
+        if (!string.IsNullOrEmpty(ContratoIdQuery))
+            AbrirDialog(ContratoIdQuery);
+    }
+
+    private void OnProgresso(ObservadorAutomacao obs)
+    {
+        if (obs.PercentualProcessado >= 100)
+        {
+            _processando = false;
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public void Dispose()
+    {
+        Hub.AoReceberProgresso -= OnProgresso;
+    }
+
+    private void AbrirDialog(string id)
+    {
+        _idDialogAberto = id;
+        _idAtribuicao   = null;
+    }
+
+    private void FecharDialog() => _idDialogAberto = null;
+
+    private async Task ExecutarMacro()
+    {
+        if (_processando) return;
+        _processando = true;
+        StateHasChanged();
+        try
+        {
+            await Http.PostAsync("api/processamento/executar", null);
+            // _processando volta para false quando o progresso chegar em 100% via SignalR
+        }
+        catch
+        {
+            _processando = false;
+            StateHasChanged();
+        }
+    }
+
+    // Solicita o desembolso e confirma pelo próprio sistema de notificações (toast + sino)
+    private async Task SolicitarDesembolso(PreenchimentoFpd fpd)
+    {
+        _dialogFpdAberto = false;
+        StateHasChanged();
+
+        try
+        {
+            var valorFmt = fpd.ParticipacaoFgts?.ToString("C", new System.Globalization.CultureInfo("pt-BR")) ?? "—";
+            var corpo = new
+            {
+                Matriculas = new[] { ServicoUsuario.Matricula },
+                Titulo     = "Desembolso solicitado",
+                Mensagem   = $"{fpd.Gigov} · AF {fpd.ContratoAf} · {fpd.Tomador} — {FmtPercFpd(fpd.PercFgts)} ({valorFmt})"
+            };
+            await Http.PostAsJsonAsync("api/teste/notificacao/matriculas", corpo);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[FPD] Falha ao notificar solicitação: {ex.Message}");
+        }
+    }
+
+    private static string FmtPercFpd(decimal? p) => p is null ? "—" : $"{p.Value.ToString("0.###", new System.Globalization.CultureInfo("pt-BR"))}%";
+
+    private void AtribuirAnalista(string id, Funcionario? funcionario)
+    {
+        if (funcionario is null) _atribuicoes.Remove(id);
+        else _atribuicoes[id] = funcionario;
+    }
+
+    private Funcionario? ObterAnalista(string id) =>
+        _atribuicoes.TryGetValue(id, out var f) ? f : null;
+
+    private List<DesembolsoCAD> AplicarBusca(List<DesembolsoCAD> lista)
+    {
+        if (string.IsNullOrWhiteSpace(_textoBusca)) return lista;
+        var t = Normalizar(_textoBusca.Trim());
+        return lista.Where(d =>
+            Normalizar(d.Id).Contains(t)       ||
+            Normalizar(d.Contrato).Contains(t) ||
+            Normalizar(d.Mutuario).Contains(t) ||
+            Normalizar(d.Gigov).Contains(t)    ||
+            (ObterAnalista(d.Id) is { } analista && Normalizar(analista.Nome).Contains(t))
+        ).ToList();
+    }
+
+    // Remove acentos e baixa a caixa: "municipio" encontra "Município"
+    private static string Normalizar(string texto)
+    {
+        var decomposto = texto.Normalize(System.Text.NormalizationForm.FormD);
+        var sb = new System.Text.StringBuilder(decomposto.Length);
+        foreach (var c in decomposto)
+            if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark)
+                sb.Append(c);
+        return sb.ToString().ToLowerInvariant();
+    }
+}
+
+
+<style>
+﻿/* ══════════════════════════════════════════════
+   PÁGINA — wrapper geral
+   ══════════════════════════════════════════════ */
+.pagina {
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100vh - var(--topbar-h));
+    background: #F4F7FB;
+}
+
+/* ══════════════════════════════════════════════
+   SEÇÃO HEADER (fundo azul-acinzentado)
+   ══════════════════════════════════════════════ */
+.pagina-header-secao {
+    background: #F4F7FB;
+    border-bottom: 1px solid #E4EBF0;
+}
+.pagina-header-container {
+    max-width: 1400px;
+    margin: 0;
+    padding: 32px;
+}
+
+/* Título 40px extrabold — "Análise de Desembolsos" */
+.pagina-titulo {
+    font-size: 40px;
+    font-weight: 800;
+    line-height: 1.05;
+    letter-spacing: -.02em;
+    color: var(--ink-900);
+}
+.titulo-destaque { color: var(--brand-700); }
+
+/* ── Stats Consolidado card ── */
+.stats-consolidado {
+    margin-top: 24px;
+    overflow: hidden;
+    border-radius: var(--radius-xl);
+    border: 1px solid var(--ink-100);
+    background: #fff;
+    box-shadow: var(--shadow-card);
+}
+.stats-consolidado-header {
+    background: #FAFBFC;
+    border-bottom: 1px solid var(--ink-100);
+    padding: 10px 20px;
+}
+.stats-consolidado-titulo {
+    font-size: 12.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .16em;
+    color: var(--ink-500);
+}
+.stats-consolidado-cells { display: flex; }
+
+.stats-cell {
+    flex: 1;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px 20px;
+    border-right: 1px solid var(--ink-100);
+    transition: background .15s;
+}
+.stats-cell:last-child { border-right: none; }
+.stats-cell:hover { background: #FAFBFC; }
+
+.stats-cell-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+.stats-cell-valor {
+    font-size: 26px;
+    font-weight: 800;
+    line-height: 1;
+    color: var(--ink-900);
+    font-variant-numeric: tabular-nums;
+}
+.stats-cell-label {
+    font-size: 10.5px;
+    font-weight: 500;
+    color: var(--ink-500);
+    margin-top: 4px;
+}
+
+/* ══════════════════════════════════════════════
+   BARRA DE FILTROS + TOOLBAR
+   ══════════════════════════════════════════════ */
+.filtros-area { background: #F4F7FB; }
+
+.filtros-container {
+    max-width: 1400px;
+    margin: 0;
+    padding: 12px 32px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid var(--ink-100);
+}
+
+/* Pill segmentado */
+.filtro-pill {
+    display: inline-flex;
+    align-items: center;
+    border-radius: var(--radius-full);
+    padding: 4px;
+    gap: 2px;
+    background: #EEF2F4;
+}
+.filtro-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: var(--radius-full);
+    padding: 6px 16px;
+    font-size: 12px;
+    font-weight: 700;
+    font-family: inherit;
+    color: var(--ink-500);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: color .15s, background .15s, box-shadow .15s;
+    white-space: nowrap;
+}
+.filtro-btn:hover { color: var(--ink-700); }
+.filtro-btn-ativo {
+    background: #fff !important;
+    color: var(--ink-900) !important;
+    box-shadow: var(--shadow-card);
+}
+.filtro-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: inline-block;
+    transition: opacity .15s;
+}
+.filtro-badge {
+    border-radius: var(--radius-full);
+    padding: 1px 6px;
+    font-size: 10px;
+    font-weight: 800;
+    background: var(--ink-200);
+    color: var(--ink-500);
+    font-variant-numeric: tabular-nums;
+}
+.filtro-badge-ativo { background: var(--ink-100); color: var(--ink-700); }
+
+/* Toolbar direita */
+.toolbar-dir {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+    flex-wrap: wrap;
+}
+
+/* Chip "Última Atualização" */
+.chip-atualizacao {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--ink-200);
+    background: #fff;
+    padding: 6px 14px;
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    color: var(--ink-500);
+    box-shadow: var(--shadow-card);
+    white-space: nowrap;
+}
+.chip-atualizacao-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--brand-500);
+    display: inline-block;
+    flex-shrink: 0;
+}
+
+/* Busca inline */
+.busca-tabela {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--ink-100);
+    background: #fff;
+    padding: 6px 10px;
+    box-shadow: var(--shadow-card);
+    font-size: 11.5px;
+    color: var(--ink-500);
+}
+.busca-tabela i { font-size: 11px; color: var(--ink-300); }
+.busca-tabela input {
+    width: 144px;
+    background: transparent;
+    border: none;
+    font-size: 11.5px;
+    color: var(--ink-900);
+    font-family: inherit;
+}
+.busca-tabela input::placeholder { color: var(--ink-300); }
+.busca-tabela input:focus { outline: none; }
+
+/* Botão Apresentação */
+.btn-apresentacao {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: var(--radius-lg);
+    background: #002A4D;
+    padding: 6px 14px;
+    font-size: 11.5px;
+    font-weight: 700;
+    font-family: inherit;
+    color: #fff;
+    box-shadow: var(--shadow-card);
+    border: none;
+    cursor: pointer;
+    transition: background .15s, opacity .15s;
+}
+.btn-apresentacao:hover:not(:disabled) { background: #00437A; }
+.btn-apresentacao:disabled,
+.btn-apresentacao-off { opacity: .45; cursor: not-allowed; }
+
+/* Botão Preencher FPD (laranja Caixa) */
+.btn-fpd {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: var(--radius-lg);
+    background: var(--amber-600);
+    padding: 6px 14px;
+    font-size: 11.5px;
+    font-weight: 700;
+    font-family: inherit;
+    color: #fff;
+    box-shadow: var(--shadow-card);
+    border: none;
+    cursor: pointer;
+    transition: background .15s;
+}
+.btn-fpd:hover { background: var(--amber-700); }
+
+/* Botão Processar */
+.btn-processar {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: var(--radius-lg);
+    background: var(--brand-700);
+    padding: 6px 14px;
+    font-size: 11.5px;
+    font-weight: 700;
+    font-family: inherit;
+    color: #fff;
+    box-shadow: var(--shadow-card);
+    border: none;
+    cursor: pointer;
+    transition: background .15s;
+}
+.btn-processar:hover:not(:disabled) { background: var(--brand-800); }
+.btn-processar:disabled { opacity: .5; cursor: not-allowed; }
+.btn-processando { opacity: .75 !important; cursor: wait !important; }
+
+/* ══════════════════════════════════════════════
+   ÁREA DE CONTRATOS
+   ══════════════════════════════════════════════ */
+.contratos-area { flex: 1; }
+
+.contratos-container {
+    max-width: 1400px;
+    margin: 0;
+    padding: 24px 32px;
+}
+
+/* Skeletons */
+.skeletons { display: flex; flex-direction: column; gap: 8px; }
+
+/* Lista de grupos */
+.grupos-lista { display: flex; flex-direction: column; gap: 16px; }
+
+/* ── Card de grupo ── */
+.grupo-card {
+    overflow: hidden;
+    border-radius: var(--radius-xl);
+    border: 1px solid var(--ink-100);
+    background: #fff;
+    box-shadow: var(--shadow-card);
+}
+
+/* Header do card de grupo */
+.grupo-card-header {
+    display: flex;
+    align-items: center;
+    padding: 14px 20px;
+    background: #fff;
+}
+.grupo-card-header.com-borda { border-bottom: 1px solid var(--ink-100); }
+
+/* ── Cabeçalho de colunas (dentro de cada card) ── */
+.cols-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 8px 20px;
+    background: #fff;
+}
+.col-h {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--ink-500);
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    flex-shrink: 0;
+}
+
+/* ── Empty state ── */
+.tabela-vazia {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 80px 0;
+    border-radius: var(--radius-xl);
+    border: 1px dashed var(--ink-200);
+    background: #fff;
+    text-align: center;
+    box-shadow: var(--shadow-card);
+}
+.tabela-vazia i { font-size: 32px; color: var(--ink-300); }
+.tabela-vazia-titulo { font-size: 15px; font-weight: 600; color: var(--ink-700); }
+.tabela-vazia-sub    { font-size: 13px; color: var(--ink-500); }
+
+/* ── Popover de atribuição da lista ── */
+.overlay-atrib {
+    position: fixed;
+    inset: 0;
+    z-index: 400;
+    background: transparent;
+}
+.popover-atrib {
+    position: fixed;
+    z-index: 401;
+    width: 220px;
+    background: #fff;
+    border: 1px solid var(--ink-100);
+    border-radius: var(--radius-xl);
+    box-shadow: 0 8px 24px rgba(0,0,0,.13), 0 2px 6px rgba(0,0,0,.07);
+    overflow: hidden;
+    animation: slideDown .15s ease;
+}
+@@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.popover-atrib-titulo {
+    padding: 10px 14px;
+    font-size: 9.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    color: var(--ink-400);
+    border-bottom: 1px solid var(--ink-100);
+}
+.popover-atrib-item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+    padding: 9px 14px;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--ink-800);
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--ink-50);
+    cursor: pointer;
+    transition: background .12s;
+    font-family: inherit;
+    text-align: left;
+}
+.popover-atrib-item:hover        { background: var(--brand-50); }
+.popover-atrib-item-ativo        { background: var(--brand-50); color: var(--brand-800); font-weight: 600; }
+.popover-atrib-avatar {
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+}
+.popover-atrib-nome { flex: 1; }
+.popover-atrib-check { color: var(--brand-600); font-size: 12px; }
+.popover-atrib-remover {
+    width: 100%;
+    padding: 9px 14px;
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--err);
+    background: transparent;
+    border: none;
+    border-top: 1px solid var(--ink-100);
+    cursor: pointer;
+    text-align: left;
+    font-family: inherit;
+    transition: background .12s;
+}
+.popover-atrib-remover:hover { background: var(--err-bg); }
+
+
+/* Tag "v2" no título — identifica a página de demonstração do dialog novo */
+.titulo-v2-tag {
+    display: inline-block;
+    vertical-align: middle;
+    margin-left: 6px;
+    padding: 3px 12px;
+    border-radius: 9999px;
+    background: linear-gradient(135deg, #005CA9, #54BBAB);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: .04em;
+}
+</style>

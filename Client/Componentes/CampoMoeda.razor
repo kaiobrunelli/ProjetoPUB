@@ -1,0 +1,65 @@
+@inject IJSRuntime JS
+@using System.Globalization
+
+@* Campo monetário pt-BR (padrão "centavos primeiro"): digita só dígitos e o
+   valor cresce da direita para a esquerda. Encapsula a máscara + sync no DOM.
+   Uso:  <CampoMoeda @bind-Value="_fpd.Ve" ReadOnly="true" /> *@
+
+<input class="fpd-input fpd-input-moeda @Class"
+       inputmode="numeric" autocomplete="off"
+       placeholder="0,00"
+       @ref="_ref"
+       value="@_texto"
+       readonly="@ReadOnly"
+       @oninput="AoDigitar" />
+
+@code {
+    private static readonly CultureInfo _br = new("pt-BR");
+
+    [Parameter] public decimal? Value { get; set; }
+    [Parameter] public EventCallback<decimal?> ValueChanged { get; set; }
+    [Parameter] public bool ReadOnly { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public EventCallback AoAlterar { get; set; }
+
+    private ElementReference _ref;
+    private string _texto = "";
+    private decimal? _ultimoValor;
+
+    protected override void OnParametersSet()
+    {
+        // Reflete mudanças externas (ex.: preenchido pela busca do contrato)
+        if (Value != _ultimoValor)
+        {
+            _ultimoValor = Value;
+            _texto = Value is > 0 ? Value.Value.ToString("N2", _br) : "";
+        }
+    }
+
+    private async Task AoDigitar(ChangeEventArgs e)
+    {
+        var digitos = new string((e.Value?.ToString() ?? "").Where(char.IsDigit).ToArray());
+        if (digitos.Length > 15) digitos = digitos[..15];
+        digitos = digitos.TrimStart('0');
+
+        decimal? valor;
+        if (digitos.Length == 0)
+        {
+            _texto = "";
+            valor  = null;
+        }
+        else
+        {
+            valor  = decimal.Parse(digitos) / 100m;
+            _texto = valor.Value.ToString("N2", _br);
+        }
+
+        _ultimoValor = valor;
+        Value = valor;
+
+        // grava direto no DOM (o Blazor pula a atualização quando o texto formatado não muda)
+        await JS.InvokeVoidAsync("sipubSetInputValor", _ref, _texto);
+        await ValueChanged.InvokeAsync(valor);
+        await AoAlterar.InvokeAsync();
+    }
+}

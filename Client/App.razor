@@ -1,0 +1,12 @@
+<Router AppAssembly="@typeof(App).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="@routeData" DefaultLayout="@typeof(LayoutPrincipal)" />
+        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <PageTitle>Página não encontrada — SIPUB</PageTitle>
+        <LayoutView Layout="@typeof(LayoutPrincipal)">
+            <p>Página não encontrada.</p>
+        </LayoutView>
+    </NotFound>
+</Router>

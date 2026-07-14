@@ -1,0 +1,265 @@
+@* ══════════════════════════════════════════════════════════════════════════
+   SINO DE NOTIFICAÇÕES — componente autocontido para o MudAppBar.
+   Uso no MainLayout:  <SinoNotificacoes Matricula="@usuarioLogin.Matricula" />
+
+   Pré-requisitos (ver LEIA-ME.md da pasta PortarParaSipub):
+     • SignalRService + ServicoNotificacao registrados como Singleton
+     • Modelos (NotificacaoDto, MensagemNotificacao, TipoNotificacao) no Model
+     • Endpoints api/notificacao/* no servidor
+   ══════════════════════════════════════════════════════════════════════════ *@
+@using PlataformaOperacional.Model.Plataforma
+@using PlataformaOperacional.Service.Middleware
+@using System.Net.Http.Json
+@inject ServicoNotificacao Notificacoes
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+@inject IDialogService Dialog
+@inject NavigationManager Nav
+@implements IDisposable
+
+<div style="position:relative">
+
+    <MudBadge Content="@_naoLidas" Visible="@(_naoLidas > 0)" Color="Color.Error"
+              Overlap="true" Bordered="true" Max="9">
+        <MudIconButton Icon="@(_naoLidas > 0 ? Icons.Material.Filled.Notifications : Icons.Material.Outlined.Notifications)"
+                       Color="Color.Inherit"
+                       title="Notificações"
+                       OnClick="AlternarPainel" />
+    </MudBadge>
+
+    <MudPopover Open="_aberto" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight"
+                Class="pa-0" Style="width:360px">
+
+        <!-- Cabeçalho -->
+        <div class="d-flex align-center justify-space-between px-4 py-2" style="border-bottom:1px solid var(--mud-palette-lines-default)">
+            <MudText Typo="Typo.subtitle1" Style="font-weight:600">Notificações</MudText>
+            @if (_notificacoes.Any(n => n.DataVisualizacao == null))
+            {
+                <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="MarcarTodasLidas">
+                    Marcar todas como lidas
+                </MudButton>
+            }
+        </div>
+
+        <!-- Lista -->
+        @if (_carregando)
+        {
+            <div class="d-flex flex-column align-center py-6 ga-2">
+                <MudProgressCircular Indeterminate="true" Size="Size.Small" />
+                <MudText Typo="Typo.caption">Carregando…</MudText>
+            </div>
+        }
+        else if (!_notificacoes.Any())
+        {
+            <div class="d-flex flex-column align-center py-6 ga-2">
+                <MudIcon Icon="@Icons.Material.Outlined.NotificationsOff" Color="Color.Default" />
+                <MudText Typo="Typo.caption">Nenhuma notificação</MudText>
+            </div>
+        }
+        else
+        {
+            <div style="max-height:340px;overflow-y:auto">
+                @foreach (var notif in _notificacoes)
+                {
+                    var naoLida = notif.DataVisualizacao == null;
+                    <div @onclick="() => AbrirNotificacao(notif)"
+                         class="d-flex px-4 py-2 ga-3"
+                         style="cursor:pointer;border-bottom:1px solid var(--mud-palette-lines-default);@(naoLida ? "background:rgba(0,92,169,.06);" : "")">
+                        <MudIcon Icon="@IconePorTipo(notif)" Size="Size.Small"
+                                 Color="@(notif.Tipo == TipoNotificacao.Urgente ? Color.Error
+                                        : notif.Tipo == TipoNotificacao.Alerta  ? Color.Warning : Color.Primary)"
+                                 Class="mt-1" />
+                        <div style="flex:1;min-width:0">
+                            <MudText Typo="Typo.body2" Style="@(naoLida ? "font-weight:600" : "")">@notif.Titulo</MudText>
+                            <MudText Typo="Typo.caption" Style="display:block">@notif.Mensagem</MudText>
+                            <MudText Typo="Typo.caption" Style="color:var(--mud-palette-text-secondary)">
+                                @FormatarTempo(notif.DataCriacao.ToLocalTime())
+                                @if (notif.ExigeConfirmacao && naoLida)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Text" Class="ml-1">
+                                        requer confirmação
+                                    </MudChip>
+                                }
+                            </MudText>
+                        </div>
+                        @if (naoLida)
+                        {
+                            <div style="width:8px;height:8px;border-radius:50%;background:var(--mud-palette-primary);margin-top:8px;flex-shrink:0"></div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+
+        <!-- Rodapé: status da conexão -->
+        <div class="d-flex align-center px-4 py-2 ga-2" style="border-top:1px solid var(--mud-palette-lines-default);background:var(--mud-palette-background-gray)">
+            <MudIcon Icon="@Icons.Material.Filled.Circle" Size="Size.Small"
+                     Style="@($"font-size:9px;color:{(Notificacoes.Conectado ? "var(--mud-palette-success)" : "var(--mud-palette-error)")}")" />
+            <MudText Typo="Typo.caption">@(Notificacoes.Conectado ? "Conectado em tempo real" : "Offline")</MudText>
+        </div>
+
+    </MudPopover>
+</div>
+
+@* Overlay transparente: fecha o painel ao clicar fora *@
+<MudOverlay Visible="_aberto" OnClick="() => _aberto = false" ZIndex="1200" />
+
+@code {
+    /// <summary>Matrícula do usuário logado — identifica a conexão e as consultas.</summary>
+    [Parameter, EditorRequired] public string Matricula { get; set; } = "";
+
+    private bool _aberto;
+    private bool _carregando;
+    private bool _iniciado;
+    private int _naoLidas;
+    private List<NotificacaoDto> _notificacoes = [];
+
+    protected override void OnInitialized()
+    {
+        Notificacoes.AoReceberNotificacao += TratarTempoReal;
+    }
+
+    // O MainLayout carrega o usuário de forma assíncrona — a Matricula chega
+    // depois do primeiro render. Iniciamos só quando ela existir, uma única vez.
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_iniciado || string.IsNullOrWhiteSpace(Matricula))
+            return;
+        _iniciado = true;
+
+        await Notificacoes.IniciarAsync(Matricula);
+        await CarregarContagemAsync();
+    }
+
+    // ── Tempo real ────────────────────────────────────────────────────────────
+    private void TratarTempoReal(MensagemNotificacao msg)
+    {
+        if (_notificacoes.All(n => n.CodigoNotificacao != msg.CodigoNotificacao))
+        {
+            _notificacoes.Insert(0, new NotificacaoDto
+            {
+                CodigoNotificacao = msg.CodigoNotificacao,
+                Titulo            = msg.Titulo,
+                Mensagem          = msg.Mensagem,
+                Tipo              = msg.Tipo,
+                CodigoAplicativo  = msg.CodigoAplicativo,
+                Link              = msg.Link,
+                DataCriacao       = msg.CriadaEm,
+                DataValidade      = msg.DataValidade
+            });
+            _naoLidas++;
+        }
+
+        var severidade = msg.Tipo switch
+        {
+            TipoNotificacao.Urgente => Severity.Error,
+            TipoNotificacao.Alerta  => Severity.Warning,
+            _                       => Severity.Info
+        };
+        Snackbar.Add($"{msg.Titulo} — {msg.Mensagem}", severidade);
+
+        InvokeAsync(StateHasChanged);
+    }
+
+    // ── API ───────────────────────────────────────────────────────────────────
+    private async Task CarregarContagemAsync()
+    {
+        try
+        {
+            _naoLidas = await Http.GetFromJsonAsync<int>($"api/notificacao/nao-lidas/total?usuarioId={Matricula}");
+            StateHasChanged();
+        }
+        catch (Exception ex) { Console.WriteLine($"[Notif] Contagem: {ex.Message}"); }
+    }
+
+    private async Task CarregarHistoricoAsync()
+    {
+        _carregando = true;
+        StateHasChanged();
+        try
+        {
+            var lista = await Http.GetFromJsonAsync<List<NotificacaoDto>>($"api/notificacao/minhas?usuarioId={Matricula}");
+            _notificacoes = lista ?? [];
+            _naoLidas     = _notificacoes.Count(n => n.DataVisualizacao == null);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Notif] Histórico: {ex.Message}");
+            _notificacoes = [];
+        }
+        finally
+        {
+            _carregando = false;
+            StateHasChanged();
+        }
+    }
+
+    // ── Interações ────────────────────────────────────────────────────────────
+    private async Task AlternarPainel()
+    {
+        _aberto = !_aberto;
+        if (_aberto)
+            await CarregarHistoricoAsync();
+    }
+
+    private async Task AbrirNotificacao(NotificacaoDto notif)
+    {
+        _aberto = false;
+
+        if (notif.ExigeConfirmacao && notif.DataVisualizacao == null)
+        {
+            var ok = await Dialog.ShowMessageBox(
+                "Confirmação de leitura",
+                $"{notif.Titulo}\n\n{notif.Mensagem}",
+                yesText: "Confirmar leitura", cancelText: "Depois");
+            if (ok != true) return;
+        }
+
+        await MarcarLida(notif);
+
+        if (!string.IsNullOrEmpty(notif.Link))
+            Nav.NavigateTo(notif.Link);
+    }
+
+    private async Task MarcarLida(NotificacaoDto notif)
+    {
+        if (notif.DataVisualizacao != null) return;
+        notif.DataVisualizacao = DateTime.UtcNow;
+        _naoLidas = Math.Max(0, _naoLidas - 1);
+        StateHasChanged();
+        try { await Http.PutAsync($"api/notificacao/{notif.CodigoNotificacao}/lida?usuarioId={Matricula}", null); }
+        catch (Exception ex) { Console.WriteLine($"[Notif] Marcar lida: {ex.Message}"); }
+    }
+
+    private async Task MarcarTodasLidas()
+    {
+        var agora = DateTime.UtcNow;
+        foreach (var n in _notificacoes.Where(n => n.DataVisualizacao == null))
+            n.DataVisualizacao = agora;
+        _naoLidas = 0;
+        StateHasChanged();
+        try { await Http.PutAsync($"api/notificacao/marcar-todas-lidas?usuarioId={Matricula}", null); }
+        catch (Exception ex) { Console.WriteLine($"[Notif] Marcar todas: {ex.Message}"); }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    private static string IconePorTipo(NotificacaoDto n) =>
+        n.ExigeConfirmacao || n.Tipo == TipoNotificacao.Urgente ? Icons.Material.Filled.GppMaybe
+        : n.Tipo == TipoNotificacao.Alerta ? Icons.Material.Filled.Warning
+        : Icons.Material.Filled.Notifications;
+
+    private static string FormatarTempo(DateTime data)
+    {
+        var delta = DateTime.Now - data;
+        return delta.TotalMinutes < 1  ? "agora"
+             : delta.TotalMinutes < 60 ? $"há {(int)delta.TotalMinutes} min"
+             : delta.TotalHours   < 24 ? $"há {(int)delta.TotalHours} h"
+             : delta.TotalDays    < 7  ? $"há {(int)delta.TotalDays} d"
+             : data.ToString("dd/MM/yyyy");
+    }
+
+    public void Dispose()
+    {
+        Notificacoes.AoReceberNotificacao -= TratarTempoReal;
+    }
+}

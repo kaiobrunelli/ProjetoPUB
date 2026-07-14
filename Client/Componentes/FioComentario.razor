@@ -1,0 +1,292 @@
+@* Fio de comentários de uma validação *@
+
+<div class="fio">
+    @foreach (var c in Comentarios)
+    {
+        var cfg = TiposComentario.Configs.GetValueOrDefault(c.Tipo) ?? TiposComentario.Configs["informativo"];
+        <div class="comentario" style="background: @cfg.CorFundo">
+            <div class="comentario-cabecalho">
+                <span class="comentario-ponto" style="background: @cfg.CorPonto"></span>
+                <span class="comentario-tipo" style="color: @cfg.CorTexto">@NomeTipo(c.Tipo)</span>
+                <span class="comentario-autor">@c.Autor</span>
+                <span class="comentario-tempo">@ServicoMock.FormatarTempo(c.Timestamp)</span>
+            </div>
+            <p class="comentario-texto">@c.Texto</p>
+        </div>
+    }
+
+    @if (_adicionando)
+    {
+        <div class="form-tratativa @(_comFoco ? "form-tratativa-foco" : "")">
+
+            <textarea class="form-textarea"
+                      placeholder="Descreva a tratativa ou observação..."
+                      rows="3"
+                      @bind="_novoTexto"
+                      @bind:event="oninput"
+                      @onfocus="() => _comFoco = true"
+                      @onblur="() => _comFoco = false"></textarea>
+
+            <div class="form-acoes-bar">
+                <!-- Pills de tipo (ocultas quando o comentário é informativo apenas) -->
+                @if (!ApenasInformativo)
+                {
+                    <div class="seletor-tipo">
+                        @foreach (var tipo in new[] { "positivo", "informativo", "negativo" })
+                        {
+                            var cfg2 = TiposComentario.Configs[tipo];
+                            var ativo = _novoTipo == tipo;
+                            <button class="btn-tipo @(ativo ? "btn-tipo-ativo" : "")"
+                                    style="@(ativo ? $"border-color:{cfg2.CorPonto};color:{cfg2.CorTexto};background:{cfg2.CorFundo}" : "")"
+                                    @onclick="() => _novoTipo = tipo">
+                                <span class="btn-tipo-dot" style="background: @cfg2.CorPonto"></span>
+                                @NomeTipo(tipo)
+                            </button>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <span class="seletor-tipo-info"><i class="bi bi-info-circle"></i> Comentário informativo</span>
+                }
+
+                <!-- Ações direita -->
+                <div class="form-acoes-dir">
+                    <button class="btn-cancelar" @onclick="CancelarAdicao">Cancelar</button>
+                    <button class="btn-salvar-tratativa"
+                            @onclick="SalvarComentario"
+                            disabled="@string.IsNullOrWhiteSpace(_novoTexto)">
+                        <i class="bi bi-check2"></i> Salvar comentário
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+    else if (!ApenasLeitura)
+    {
+        <button class="btn-adicionar-comentario" @onclick="() => _adicionando = true">
+            <i class="bi bi-plus"></i> Adicionar comentário
+        </button>
+    }
+    else if (!Comentarios.Any())
+    {
+        <span class="fio-sem-comentario">Sem comentários</span>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public List<Comentario> Comentarios           { get; set; } = [];
+    [Parameter] public EventCallback<Comentario>        AoAdicionarComentario { get; set; }
+    [Parameter] public bool                             ApenasLeitura         { get; set; }
+    [Parameter] public bool                             ApenasInformativo     { get; set; }
+
+    private bool   _adicionando = false;
+    private bool   _comFoco     = false;
+    private string _novoTipo    = "informativo";
+    private string _novoTexto   = "";
+
+    protected override void OnParametersSet()
+    {
+        if (ApenasInformativo) _novoTipo = "informativo";
+    }
+
+    private async Task SalvarComentario()
+    {
+        if (string.IsNullOrWhiteSpace(_novoTexto)) return;
+
+        var novoComentario = new Comentario
+        {
+            Tipo      = _novoTipo,
+            Texto     = _novoTexto.Trim(),
+            Autor     = "Karina Souto",
+            Timestamp = DateTime.Now
+        };
+
+        await AoAdicionarComentario.InvokeAsync(novoComentario);
+        CancelarAdicao();
+    }
+
+    private void CancelarAdicao()
+    {
+        _adicionando = false;
+        _novoTexto   = "";
+        _novoTipo    = "informativo";
+        _comFoco     = false;
+    }
+
+    private static string NomeTipo(string tipo) => tipo switch
+    {
+        "positivo" => "Positivo",
+        "negativo" => "Negativo",
+        _          => "Informativo"
+    };
+}
+
+
+<style>
+.fio { display: flex; flex-direction: column; gap: 8px; }
+
+/* ── Comentários existentes ── */
+.comentario {
+    border-radius: var(--radius-md);
+    padding: 8px 10px;
+}
+.comentario-cabecalho {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+    flex-wrap: wrap;
+}
+.comentario-ponto  { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.comentario-tipo   { font-size: 10px; font-weight: 700; }
+.comentario-autor  { font-size: 10px; color: var(--ink-700); font-weight: 500; }
+.comentario-tempo  { font-size: 10px; color: var(--ink-500); margin-left: auto; }
+.comentario-texto  { font-size: 12px; color: var(--ink-900); line-height: 1.5; }
+
+/* ── Form TRATATIVA ── */
+.form-tratativa {
+    display: flex;
+    flex-direction: column;
+    border: 1.5px solid var(--ink-200);
+    border-radius: var(--radius-lg);
+    background: #fff;
+    overflow: hidden;
+    transition: border-color .15s, box-shadow .15s;
+}
+/* Efeito de foco igual ao da imagem — borda azul + anel */
+.form-tratativa-foco {
+    border-color: var(--brand-300);
+    box-shadow: 0 0 0 3px var(--brand-50);
+}
+
+/* Rótulo "TRATATIVA" dentro do card */
+.form-rotulo {
+    padding: 8px 12px 0;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    color: var(--ink-500);
+}
+
+/* Textarea sem bordas próprias — a borda é do card */
+.form-textarea {
+    resize: none;
+    border: none;
+    padding: 10px 12px 8px;
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--ink-900);
+    line-height: 1.55;
+    background: transparent;
+    width: 100%;
+}
+.form-textarea:focus { outline: none; }
+.form-textarea::placeholder { color: var(--ink-300); }
+
+/* Barra de ações — separada por borda topo */
+.form-acoes-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 10px;
+    border-top: 1px solid var(--ink-100);
+    background: #FAFBFC;
+    flex-wrap: wrap;
+}
+
+/* Pills de tipo */
+.seletor-tipo { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+.btn-tipo {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 24px;
+    padding: 0 10px;
+    border-radius: var(--radius-full);
+    font-size: 11px;
+    font-weight: 600;
+    font-family: inherit;
+    border: 1px solid var(--ink-200);
+    color: var(--ink-500);
+    background: transparent;
+    cursor: pointer;
+    transition: all .15s;
+}
+.btn-tipo:hover { background: var(--ink-50); color: var(--ink-700); }
+.btn-tipo-ativo { font-weight: 700; }
+
+.btn-tipo-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: inline-block;
+}
+
+/* Ações direita */
+.form-acoes-dir { display: flex; align-items: center; gap: 6px; }
+
+.btn-cancelar {
+    height: 26px; padding: 0 10px;
+    border-radius: var(--radius-md);
+    font-size: 11.5px;
+    font-family: inherit;
+    color: var(--ink-500);
+    background: transparent;
+    border: 1px solid var(--ink-200);
+    cursor: pointer;
+    transition: background .15s;
+}
+.btn-cancelar:hover { background: var(--ink-50); color: var(--ink-700); }
+
+/* Botão "Salvar comentário" — estilo outlined suave */
+.btn-salvar-tratativa {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 26px;
+    padding: 0 12px;
+    border-radius: var(--radius-md);
+    font-size: 11.5px;
+    font-weight: 600;
+    font-family: inherit;
+    color: var(--ink-500);
+    background: #fff;
+    border: 1px solid var(--ink-200);
+    cursor: pointer;
+    transition: all .15s;
+    box-shadow: var(--shadow-card);
+}
+.btn-salvar-tratativa:hover:not(:disabled) {
+    background: var(--brand-50);
+    border-color: var(--brand-200);
+    color: var(--brand-700);
+}
+.btn-salvar-tratativa:disabled { opacity: .4; cursor: not-allowed; }
+.btn-salvar-tratativa i { font-size: 12px; }
+
+/* ── Botão "Adicionar comentário" ── */
+.btn-adicionar-comentario {
+    height: 28px;
+    padding: 0 10px;
+    border-radius: var(--radius-md);
+    font-size: 11px;
+    font-weight: 500;
+    font-family: inherit;
+    color: var(--brand-700);
+    background: var(--brand-50);
+    border: 1px dashed var(--brand-200);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    transition: background .15s, border-color .15s;
+    width: fit-content;
+}
+.btn-adicionar-comentario:hover { background: var(--brand-100); border-color: var(--brand-300); }
+.fio-sem-comentario { font-size: 11px; color: var(--ink-400, var(--ink-300)); font-style: italic; }
+.seletor-tipo-info { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--ink-500); }
+</style>

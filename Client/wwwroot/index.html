@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SIPUB — Análise de Desembolsos</title>
+    <base href="/" />
+
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
+
+    <link rel="stylesheet" href="css/app.css" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <link href="SipubDesembolsos.Client.styles.css" rel="stylesheet" />
+</head>
+
+<body>
+    <div id="app">
+        <div class="carregando-inicial">
+            <div class="carregando-logo">SIPUB</div>
+            <div class="carregando-spinner"></div>
+        </div>
+    </div>
+
+    <div id="blazor-error-ui">
+        Ocorreu um erro inesperado.
+        <a href="" class="reload">Recarregar</a>
+        <a class="dismiss">✕</a>
+    </div>
+    <script src="js/apresentacao.js"></script>
+    <script>
+        window.scrollSubItemIntoView = function (id) {
+            const el = document.getElementById(id);
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        };
+        // Sincroniza o texto de um input controlado por máscara (moeda pt-BR):
+        // o Blazor pula a atualização do DOM quando o valor formatado não muda,
+        // então gravamos direto no elemento a cada tecla.
+        window.sipubSetInputValor = function (el, valor) {
+            if (el) el.value = valor;
+        };
+        // Rola um elemento com scroll até o fim (usado na validação da FPD,
+        // para acompanhar as etapas conforme aparecem).
+        window.sipubScrollFim = function (el) {
+            if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+        };
+        // Rola até uma seção da FPD pelo id (navegação lateral).
+        window.sipubScrollPara = function (id) {
+            const el = document.getElementById(id);
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        };
+    </script>
+    <script src="_framework/blazor.webassembly.js"></script>
+</body>
+
+</html>

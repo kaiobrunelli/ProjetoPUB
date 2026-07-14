@@ -1,0 +1,61 @@
+<button class="chip @(Ativo ? "chip-ativo" : "")" @onclick="OnClick">
+    @Rotulo
+    @if (Contagem.HasValue)
+    {
+        <span class="chip-badge">@Contagem</span>
+    }
+</button>
+
+@code {
+    [Parameter, EditorRequired] public string Rotulo   { get; set; } = "";
+    [Parameter] public bool   Ativo    { get; set; }
+    [Parameter] public int?   Contagem { get; set; }
+    [Parameter] public EventCallback AoClicar { get; set; }
+
+    private async Task OnClick() => await AoClicar.InvokeAsync();
+}
+
+
+<style>
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 28px;
+    padding: 0 10px;
+    border-radius: var(--radius-full);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink-700);
+    background: transparent;
+    border: 1px solid var(--ink-200);
+    transition: background .15s, border-color .15s, color .15s;
+    cursor: pointer;
+}
+.chip:hover { background: var(--ink-50); border-color: var(--ink-300); }
+
+.chip-ativo {
+    background: var(--brand-700) !important;
+    border-color: var(--brand-700) !important;
+    color: #fff !important;
+}
+
+.chip-badge {
+    font-size: 10px;
+    font-weight: 700;
+    background: rgba(255,255,255,.25);
+    color: inherit;
+    border-radius: var(--radius-full);
+    padding: 0 5px;
+    min-width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+.chip:not(.chip-ativo) .chip-badge {
+    background: var(--ink-100);
+    color: var(--ink-700);
+}
+</style>

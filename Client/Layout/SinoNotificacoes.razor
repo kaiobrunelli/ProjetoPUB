@@ -1,0 +1,597 @@
+@* ══════════════════════════════════════════════════════════════════════════
+   SINO DE NOTIFICAÇÕES — componente autocontido para a barra superior.
+   Uso no layout:  <SinoNotificacoes Matricula="@usuarioLogin.Matricula" />
+
+   Pré-requisitos:
+     • SignalRService + ServicoNotificacao registrados como Singleton
+     • Modelos (NotificacaoDto, MensagemNotificacao, TipoNotificacao) no PlataformaNotificacao.Domain
+     • Endpoints api/notificacao/* no servidor
+   ══════════════════════════════════════════════════════════════════════════ *@
+@using PlataformaNotificacao.Domain
+@using PlataformaNotificacao.Domain.DTO
+@using PlataformaNotificacao.Domain.Enum
+@using System.Net.Http.Json
+
+@inject ServicoNotificacao Notificacoes
+@inject HttpClient Http
+@inject NavigationManager Nav
+@implements IDisposable
+
+<div class="notif-wrapper">
+
+    <button class="btn-sino @(_aberto ? "ativo" : "") @(_naoLidas > 0 ? "tem-novas" : "")"
+            @onclick="AlternarPainel" title="Notificações">
+        <i class="bi bi-bell@(_naoLidas > 0 ? "-fill" : "") notif-sino"></i>
+        @if (_naoLidas > 0)
+        {
+            <span class="notif-badge">@(_naoLidas > 9 ? "9+" : _naoLidas.ToString())</span>
+        }
+    </button>
+
+    @if (_aberto)
+    {
+        <div class="painel-notif" @onclick:stopPropagation>
+
+            <!-- Cabeçalho -->
+            <div class="painel-notif-cabecalho">
+                <span class="painel-notif-titulo">Notificações</span>
+                @if (_notificacoes.Any(n => n.DataVisualizacao == null))
+                {
+                    <button class="btn-marcar-lidas" @onclick="MarcarTodasLidas">Marcar todas como lidas</button>
+                }
+            </div>
+
+            <!-- Lista -->
+            @if (_carregando)
+            {
+                <div class="painel-notif-vazio">
+                    <i class="bi bi-arrow-repeat spin"></i>
+                    <span>Carregando…</span>
+                </div>
+            }
+            else if (!_notificacoes.Any())
+            {
+                <div class="painel-notif-vazio">
+                    <i class="bi bi-bell-slash"></i>
+                    <span>Nenhuma notificação</span>
+                </div>
+            }
+            else
+            {
+                <div class="painel-notif-lista">
+                    @foreach (var notif in _notificacoes)
+                    {
+                        var naoLida = notif.DataVisualizacao == null;
+                        <div class="item-notif @(naoLida ? "nao-lida" : "lida") tipo-@notif.Tipo.ToString().ToLower() @(notif.ExigeConfirmacao && naoLida ? "requer-confirmacao" : "")"
+                             @onclick="() => AbrirNotificacao(notif)">
+                            <div class="item-notif-icone">
+                                <i class="bi @IconePorTipo(notif)"></i>
+                            </div>
+                            <div class="item-notif-corpo">
+                                <div class="item-notif-titulo">@notif.Titulo</div>
+                                <div class="item-notif-descricao">@notif.Mensagem</div>
+                                <div class="item-notif-meta">
+                                    <span class="item-notif-tempo">@FormatarTempo(notif.DataCriacao.ToLocalTime())</span>
+                                    @if (notif.CodigoAplicativo.HasValue)
+                                    {
+                                        <span class="item-notif-escopo modulo">@notif.CodigoAplicativo</span>
+                                    }
+                                    @if (notif.ExigeConfirmacao && naoLida)
+                                    {
+                                        <span class="item-notif-escopo confirmacao">requer confirmação</span>
+                                    }
+                                </div>
+                            </div>
+                            @if (naoLida)
+                            {
+                                <div class="item-notif-ponto"></div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+
+            <!-- Rodapé: status da conexão -->
+            <div class="painel-notif-rodape">
+                <span class="status-conexao @(Notificacoes.Conectado ? "conectado" : "desconectado")">
+                    <i class="bi bi-circle-fill"></i>
+                    @(Notificacoes.Conectado ? "Conectado em tempo real" : "Offline")
+                </span>
+            </div>
+        </div>
+    }
+</div>
+
+@* Toast (substitui o Snackbar) *@
+@if (_mostrarToast)
+{
+    <div class="toast-notif tipo-@_toastAtual?.Tipo.ToString().ToLower()" @onclick="FecharToast">
+        <div class="toast-icone">
+            <i class="bi @IconeToast(_toastAtual)"></i>
+        </div>
+        <div class="toast-corpo">
+            <div class="toast-titulo">@_toastAtual?.Titulo</div>
+            <div class="toast-descricao">@_toastAtual?.Mensagem</div>
+        </div>
+        <button class="toast-fechar" @onclick="FecharToast" @onclick:stopPropagation>
+            <i class="bi bi-x"></i>
+        </button>
+    </div>
+}
+
+@* Dialog de confirmação obrigatória de leitura (substitui o MessageBox) *@
+@if (_notifConfirmacaoPendente is not null)
+{
+    <DialogConfirmacaoLeitura Notificacao="@_notifConfirmacaoPendente"
+                              AoConfirmar="ConfirmarLeitura"
+                              AoCancelar="@(() => _notifConfirmacaoPendente = null)" />
+}
+
+@* Overlay transparente: fecha o painel ao clicar fora *@
+@if (_aberto)
+{
+    <div class="overlay-transparente" @onclick="() => _aberto = false"></div>
+}
+
+@code {
+    /// <summary>Matrícula do usuário logado — identifica a conexão e as consultas.</summary>
+    [Parameter, EditorRequired] public string Matricula { get; set; } = "";
+
+    private bool _aberto;
+    private bool _carregando;
+    private bool _iniciado;
+    private int _naoLidas;
+    private List<NotificacaoDto> _notificacoes = [];
+
+    private string? _matriculaAtual;
+    private bool _mostrarToast;
+    private MensagemNotificacao? _toastAtual;
+    private System.Threading.Timer? _timerToast;
+    private NotificacaoDto? _notifConfirmacaoPendente;
+
+    protected override void OnInitialized()
+    {
+        Notificacoes.AoReceberNotificacao += TratarTempoReal;
+    }
+
+    // O layout carrega o usuário de forma assíncrona — a Matricula chega depois do
+    // primeiro render. Iniciamos quando ela existir; se ela MUDAR (seletor de teste),
+    // reconectamos com a nova identidade e recarregamos a contagem.
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrWhiteSpace(Matricula) || Matricula == _matriculaAtual)
+            return;
+
+        var trocouUsuario = _iniciado;
+        _iniciado = true;
+        _matriculaAtual = Matricula;
+
+        if (trocouUsuario)
+        {
+            _notificacoes = [];
+            _naoLidas = 0;
+            _aberto = false;
+        }
+
+        await Notificacoes.IniciarAsync(Matricula);
+        await CarregarContagemAsync();
+    }
+
+    // ── Tempo real ────────────────────────────────────────────────────────────
+    private void TratarTempoReal(MensagemNotificacao msg)
+    {
+        if (_notificacoes.All(n => n.CodigoNotificacao != msg.CodigoNotificacao))
+        {
+            _notificacoes.Insert(0, new NotificacaoDto
+            {
+                CodigoNotificacao = msg.CodigoNotificacao,
+                Titulo            = msg.Titulo,
+                Mensagem          = msg.Mensagem,
+                Tipo              = msg.Tipo,
+                CodigoAplicativo  = msg.CodigoAplicativo,
+                Link              = msg.Link,
+                DataCriacao       = msg.CriadaEm,
+                DataValidade      = msg.DataValidade
+            });
+            _naoLidas++;
+        }
+
+        _toastAtual   = msg;
+        _mostrarToast = true;
+
+        _timerToast?.Dispose();
+        _timerToast = new System.Threading.Timer(_ =>
+        {
+            _mostrarToast = false;
+            InvokeAsync(StateHasChanged);
+        }, null, 5000, System.Threading.Timeout.Infinite);
+
+        InvokeAsync(StateHasChanged);
+    }
+
+    // ── API ───────────────────────────────────────────────────────────────────
+    private async Task CarregarContagemAsync()
+    {
+        try
+        {
+            _naoLidas = await Http.GetFromJsonAsync<int>($"api/notificacao/nao-lidas/total?matriculaUsuario={Matricula}");
+            StateHasChanged();
+        }
+        catch (Exception ex) { Console.WriteLine($"[Notif] Contagem: {ex.Message}"); }
+    }
+
+    private async Task CarregarHistoricoAsync()
+    {
+        _carregando = true;
+        StateHasChanged();
+        try
+        {
+            var lista = await Http.GetFromJsonAsync<List<NotificacaoDto>>($"api/notificacao/minhas?matriculaUsuario={Matricula}");
+            _notificacoes = lista ?? [];
+            _naoLidas     = _notificacoes.Count(n => n.DataVisualizacao == null);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Notif] Histórico: {ex.Message}");
+            _notificacoes = [];
+        }
+        finally
+        {
+            _carregando = false;
+            StateHasChanged();
+        }
+    }
+
+    // ── Interações ────────────────────────────────────────────────────────────
+    private async Task AlternarPainel()
+    {
+        _aberto = !_aberto;
+        if (_aberto)
+            await CarregarHistoricoAsync();
+    }
+
+    private async Task AbrirNotificacao(NotificacaoDto notif)
+    {
+        _aberto = false;
+
+        if (notif.ExigeConfirmacao && notif.DataVisualizacao == null)
+        {
+            _notifConfirmacaoPendente = notif;
+            StateHasChanged();
+            return;
+        }
+
+        await MarcarLida(notif);
+
+        if (!string.IsNullOrEmpty(notif.Link))
+            Nav.NavigateTo(notif.Link);
+    }
+
+    private async Task ConfirmarLeitura()
+    {
+        if (_notifConfirmacaoPendente is null) return;
+        var notif = _notifConfirmacaoPendente;
+        _notifConfirmacaoPendente = null;
+        await MarcarLida(notif);
+        if (!string.IsNullOrEmpty(notif.Link))
+            Nav.NavigateTo(notif.Link);
+    }
+
+    private async Task MarcarLida(NotificacaoDto notif)
+    {
+        if (notif.DataVisualizacao != null) return;
+        notif.DataVisualizacao = DateTime.UtcNow;
+        _naoLidas = Math.Max(0, _naoLidas - 1);
+        StateHasChanged();
+        try { await Http.PutAsync($"api/notificacao/{notif.CodigoNotificacao}/lida?matriculaUsuario={Matricula}", null); }
+        catch (Exception ex) { Console.WriteLine($"[Notif] Marcar lida: {ex.Message}"); }
+    }
+
+    private async Task MarcarTodasLidas()
+    {
+        var agora = DateTime.UtcNow;
+        foreach (var n in _notificacoes.Where(n => n.DataVisualizacao == null))
+            n.DataVisualizacao = agora;
+        _naoLidas = 0;
+        StateHasChanged();
+        try { await Http.PutAsync($"api/notificacao/marcar-todas-lidas?matriculaUsuario={Matricula}", null); }
+        catch (Exception ex) { Console.WriteLine($"[Notif] Marcar todas: {ex.Message}"); }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    private void FecharToast() => _mostrarToast = false;
+
+    private static string IconePorTipo(NotificacaoDto n) =>
+        n.ExigeConfirmacao || n.Tipo == TipoNotificacao.Urgente ? "bi-shield-exclamation"
+        : n.Tipo == TipoNotificacao.Alerta ? "bi-exclamation-triangle-fill"
+        : "bi-bell-fill";
+
+    private static string IconeToast(MensagemNotificacao? m) =>
+        m is null ? "bi-bell-fill"
+        : m.Tipo == TipoNotificacao.Urgente ? "bi-shield-exclamation"
+        : m.Tipo == TipoNotificacao.Alerta ? "bi-exclamation-triangle-fill"
+        : "bi-bell-fill";
+
+    private static string FormatarTempo(DateTime data)
+    {
+        var delta = DateTime.Now - data;
+        return delta.TotalMinutes < 1  ? "agora"
+             : delta.TotalMinutes < 60 ? $"há {(int)delta.TotalMinutes} min"
+             : delta.TotalHours   < 24 ? $"há {(int)delta.TotalHours} h"
+             : delta.TotalDays    < 7  ? $"há {(int)delta.TotalDays} d"
+             : data.ToString("dd/MM/yyyy");
+    }
+
+    public void Dispose()
+    {
+        Notificacoes.AoReceberNotificacao -= TratarTempoReal;
+        _timerToast?.Dispose();
+    }
+}
+
+<style>
+/* ── Sino (branco sobre o degradê da barra) ─────────────────────────────── */
+.notif-wrapper { position: relative; }
+
+.btn-sino {
+    position: relative;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    color: #fff;
+    font-size: 19px;
+    transition: background .15s, transform .15s;
+}
+.btn-sino:hover {
+    background: rgba(255, 255, 255, .15);
+    transform: scale(1.06);
+}
+.btn-sino.ativo { background: rgba(255, 255, 255, .22); }
+.btn-sino.tem-novas .notif-sino { animation: sinoBalance .6s ease-in-out 1; }
+
+.notif-sino { transition: color .15s; }
+
+@@keyframes sinoBalance {
+    0%   { transform: rotate(0deg); }
+    20%  { transform: rotate(15deg); }
+    40%  { transform: rotate(-12deg); }
+    60%  { transform: rotate(8deg); }
+    80%  { transform: rotate(-5deg); }
+    100% { transform: rotate(0deg); }
+}
+
+.notif-badge {
+    position: absolute;
+    top: 3px; right: 3px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    background: #ef4444;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    border-radius: var(--radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    pointer-events: none;
+    border: 2px solid rgba(255, 255, 255, .85);
+}
+
+/* ── Painel ──────────────────────────────────────────────────────────────── */
+.painel-notif {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    width: 340px;
+    background: #fff;
+    border: 1px solid var(--ink-200);
+    border-radius: var(--radius-xl, 10px);
+    box-shadow: var(--shadow-pop);
+    z-index: 300;
+    animation: slideDown .18s ease;
+}
+.painel-notif-cabecalho {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px 10px;
+    border-bottom: 1px solid var(--ink-100);
+    border-radius: var(--radius-xl, 10px) var(--radius-xl, 10px) 0 0;
+    overflow: hidden;
+}
+.painel-notif-titulo { font-size: 13px; font-weight: 600; color: var(--ink-900); }
+.btn-marcar-lidas {
+    font-size: 11px;
+    color: var(--brand-700);
+    font-weight: 500;
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+    transition: background .15s;
+}
+.btn-marcar-lidas:hover { background: var(--brand-50); }
+
+.painel-notif-vazio {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 28px 0;
+    color: var(--ink-400, var(--ink-300));
+    font-size: 12px;
+}
+.painel-notif-vazio i { font-size: 28px; }
+
+.painel-notif-lista {
+    max-height: 340px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+}
+.painel-notif-lista::-webkit-scrollbar { width: 5px; }
+.painel-notif-lista::-webkit-scrollbar-track { background: var(--ink-50); }
+.painel-notif-lista::-webkit-scrollbar-thumb {
+    background: var(--ink-300);
+    border-radius: var(--radius-full);
+}
+.painel-notif-lista::-webkit-scrollbar-thumb:hover { background: var(--ink-400); }
+
+.item-notif {
+    cursor: pointer;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--ink-50);
+    transition: background .12s;
+    position: relative;
+}
+.item-notif:hover { background: var(--ink-50); }
+.item-notif.nao-lida { background: var(--brand-50); }
+.item-notif.nao-lida:hover { background: var(--brand-100); }
+
+.item-notif-icone {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: var(--brand-100);
+    color: var(--brand-700);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+.item-notif.tipo-sucesso .item-notif-icone { background: var(--ok-bg);   color: var(--ok);   }
+.item-notif.tipo-alerta  .item-notif-icone { background: var(--warn-bg); color: var(--warn); }
+.item-notif.tipo-urgente .item-notif-icone { background: #FEF2F2;        color: #C0392B;     }
+.item-notif.requer-confirmacao.nao-lida { background: #FFF8F8; }
+.item-notif.requer-confirmacao.nao-lida:hover { background: #FEF2F2; }
+
+.item-notif-corpo { flex: 1; min-width: 0; }
+.item-notif-titulo    { font-size: 12px; font-weight: 600; color: var(--ink-900); margin-bottom: 2px; }
+.item-notif-descricao { font-size: 11px; color: var(--ink-700); line-height: 1.4; }
+.item-notif-tempo     { font-size: 10px; color: var(--ink-500); }
+
+.item-notif-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+}
+.item-notif-escopo {
+    padding: 1px 5px;
+    border-radius: var(--radius-full);
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+}
+.item-notif-escopo.modulo      { background: #f0f9ff; color: #0369a1; }
+.item-notif-escopo.confirmacao { background: #FEF2F2; color: #C0392B; }
+
+.item-notif-ponto {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--brand-500);
+    flex-shrink: 0;
+    margin-top: 6px;
+}
+
+.painel-notif-rodape {
+    padding: 8px 14px;
+    border-top: 1px solid var(--ink-100);
+    background: var(--ink-50);
+    border-radius: 0 0 var(--radius-xl, 10px) var(--radius-xl, 10px);
+    overflow: hidden;
+}
+.status-conexao {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    color: var(--ink-500);
+}
+.status-conexao i { font-size: 7px; }
+.status-conexao.conectado i    { color: var(--ok); }
+.status-conexao.desconectado i { color: var(--err); }
+
+/* ── Overlay transparente (fecha o painel ao clicar fora) ───────────────── */
+.overlay-transparente {
+    position: fixed;
+    top: var(--topbar-h);
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 150;
+    background: transparent;
+}
+
+/* ── Toast ───────────────────────────────────────────────────────────────── */
+.toast-notif {
+    position: fixed;
+    top: calc(var(--topbar-h) + 12px);
+    right: 20px;
+    width: 340px;
+    background: #fff;
+    border: 1px solid var(--ink-200);
+    border-left: 3px solid var(--brand-700);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-pop);
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 14px;
+    z-index: 400;
+    animation: slideDown .22s ease;
+    cursor: pointer;
+}
+.toast-notif.tipo-sucesso { border-left-color: var(--ok);   }
+.toast-notif.tipo-alerta  { border-left-color: var(--warn); }
+.toast-notif.tipo-urgente { border-left-color: #C0392B;     }
+
+.toast-icone {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: var(--brand-50);
+    color: var(--brand-700);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+.toast-notif.tipo-sucesso .toast-icone { background: var(--ok-bg);   color: var(--ok);   }
+.toast-notif.tipo-alerta  .toast-icone { background: var(--warn-bg); color: var(--warn); }
+.toast-notif.tipo-urgente .toast-icone { background: #FEF2F2;        color: #C0392B;     }
+
+.toast-corpo { flex: 1; min-width: 0; }
+.toast-titulo    { font-size: 13px; font-weight: 600; color: var(--ink-900); margin-bottom: 2px; }
+.toast-descricao { font-size: 12px; color: var(--ink-700); line-height: 1.4; }
+.toast-fechar {
+    color: var(--ink-500);
+    font-size: 15px;
+    padding: 2px;
+    border-radius: var(--radius-sm);
+    transition: color .15s;
+    flex-shrink: 0;
+    margin-top: -1px;
+}
+.toast-fechar:hover { color: var(--ink-900); }
+
+@@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Spinner loading ─────────────────────────────────────────────────────── */
+.spin { animation: spinAnim .8s linear infinite; display: inline-block; }
+@@keyframes spinAnim { to { transform: rotate(360deg); } }
+</style>

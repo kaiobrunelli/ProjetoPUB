@@ -1,0 +1,181 @@
+/* ============================================================
+   VARIÁVEIS DE TEMA — idêntico ao Tailwind config do React
+   ============================================================ */
+:root {
+  --brand-900: #002A4D;
+  --brand-800: #00437A;
+  --brand-700: #005CA9;
+  --brand-500: #2D8AD8;
+  --brand-300: #6DBAFA;
+  --brand-200: #A0D2FC;
+  --brand-100: #CFE3F8;
+  --brand-50:  #E5F1FC;
+
+  --amber-700: #A65E00;
+  --amber-600: #D87B00;
+  --amber-500: #F39200;
+  --amber-400: #FDB548;
+  --amber-50:  #FFEFD6;
+
+  --ink-900: #22292E;
+  --ink-700: #404B52;
+  --ink-500: #64747A;
+  --ink-300: #9EB2BB;
+  --ink-200: #D0E0E3;
+  --ink-100: #EBF1F2;
+  --ink-50:  #F7FAFA;
+
+  --ok:      #1A7A4A;
+  --err:     #C0392B;
+  --warn:    #D87B00;
+  --ok-bg:   #E0F2E7;
+  --err-bg:  #FCE6E3;
+  --warn-bg: #FFEFD6;
+
+  --shadow-card: 0 1px 2px rgba(34,41,46,.04), 0 1px 3px rgba(34,41,46,.06);
+  --shadow-pop:  0 8px 24px rgba(0,67,122,.10), 0 2px 6px rgba(34,41,46,.06);
+
+  /* ── Plataforma Operacional (modelo original CEFGA) ── */
+  --po-azul: #005CA9;            /* drawer / início do degradê */
+  --po-verde: #54BBAB;           /* fim do degradê do cabeçalho */
+  --po-gradiente: linear-gradient(to right, #005CA9, #54BBAB);
+  --po-laranja: #F39200;         /* laranja Caixa (logo X) */
+  --po-rodape: #EFF5F6;
+  --drawer-w: 250px;
+  --rodape-h: 40px;
+
+  --font: 'Inter', system-ui, -apple-system, sans-serif;
+  --topbar-h: 64px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+}
+
+/* ============================================================
+   RESET & BASE
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: #fff;
+  font-family: var(--font);
+  font-size: 13px;
+  color: var(--ink-900);
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: inherit; text-decoration: none; }
+button { font-family: inherit; cursor: pointer; border: none; background: none; }
+
+/* ============================================================
+   SCROLLBAR
+   ============================================================ */
+::-webkit-scrollbar       { width: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--ink-200); border-radius: 8px; border: 2px solid #fff; }
+::-webkit-scrollbar-thumb:hover { background: var(--ink-300); }
+
+/* ============================================================
+   FOCO
+   ============================================================ */
+*:focus-visible {
+  outline: 2px solid var(--brand-500);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ============================================================
+   ANIMAÇÕES GLOBAIS
+   ============================================================ */
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position:  400px 0; }
+}
+@keyframes girar {
+  to { transform: rotate(360deg); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes popIn {
+  from { opacity: 0; transform: scale(.97) translateY(4px); }
+  to   { opacity: 1; transform: scale(1)   translateY(0);   }
+}
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ============================================================
+   UTILITÁRIOS GLOBAIS
+   ============================================================ */
+.skeleton {
+  background: linear-gradient(90deg, var(--ink-100) 0%, var(--ink-50) 50%, var(--ink-100) 100%);
+  background-size: 800px 100%;
+  animation: shimmer 1.4s infinite linear;
+  border-radius: var(--radius-md);
+}
+
+.spinner { animation: girar 0.8s linear infinite; }
+
+.acc-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 280ms cubic-bezier(.22,.61,.36,1);
+}
+.acc-body.aberto { grid-template-rows: 1fr; }
+.acc-body > .acc-inner { overflow: hidden; }
+
+/* ============================================================
+   TELA INICIAL
+   ============================================================ */
+.carregando-inicial {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  gap: 20px;
+}
+.carregando-logo {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--brand-700);
+  letter-spacing: 2px;
+}
+.carregando-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--ink-100);
+  border-top-color: var(--brand-500);
+  border-radius: 50%;
+  animation: girar 0.8s linear infinite;
+}
+
+/* ============================================================
+   BLAZOR ERROR UI
+   ============================================================ */
+#blazor-error-ui {
+  background: var(--err-bg);
+  border-top: 1px solid var(--err);
+  color: var(--err);
+  display: none;
+  font-size: 12px;
+  padding: 10px 16px;
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 9999;
+}
+#blazor-error-ui .reload { color: var(--err); font-weight: 600; text-decoration: underline; }
+#blazor-error-ui .dismiss { float: right; cursor: pointer; }
+
+.blazor-error-boundary {
+  padding: 1rem;
+  background: var(--err-bg);
+  color: var(--err);
+  border-radius: var(--radius-lg);
+}

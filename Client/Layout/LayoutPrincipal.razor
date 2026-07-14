@@ -1,0 +1,317 @@
+@inherits LayoutComponentBase
+@inject ServicoUsuario ServicoUsuario
+
+<div class="layout @(_menuAberto ? "" : "menu-fechado")">
+
+    <NavMenuLateral Aberto="_menuAberto" />
+
+    <header class="barra-superior @(_menuAberto ? "" : "sem-menu")">
+
+        <!-- Hambúrguer -->
+        <button class="btn-hamburger" @onclick="AlternarMenu" title="Menu">
+            <i class="bi bi-list"></i>
+        </button>
+
+        <!-- Título -->
+        <div class="titulo-app">
+            CEFGA | Plataforma Operacional
+        </div>
+
+        <!-- Ações -->
+        <div class="acoes-area">
+
+            <!-- Sino de Notificações (autocontido — mesma forma de uso do MainLayout original) -->
+            <SinoNotificacoes Matricula="@ServicoUsuario.Matricula" />
+
+            <!-- Usuário / Seletor de Usuário (teste) -->
+            <div class="avatar-wrapper">
+                <button class="usuario-btn @(_mostrarSeletorUsuario ? "ativo" : "")"
+                        @onclick="AlternarSeletorUsuario"
+                        title="Trocar usuário para teste">
+                    <i class="bi bi-person-fill usuario-icone"></i>
+                    <span class="usuario-ola">Olá @ServicoUsuario.Nome</span>
+                    <i class="bi bi-chevron-down usuario-chevron @(_mostrarSeletorUsuario ? "rotacionado" : "")"></i>
+                </button>
+
+                @if (_mostrarSeletorUsuario)
+                {
+                    <div class="seletor-usuario" @onclick:stopPropagation>
+                        <div class="seletor-titulo">
+                            <i class="bi bi-person-fill-gear"></i>
+                            Trocar usuário (teste)
+                        </div>
+                        @foreach (var u in _usuariosTeste)
+                        {
+                            <button class="seletor-item @(u.Matricula == ServicoUsuario.Matricula ? "ativo" : "")"
+                                    @onclick="() => TrocarUsuario(u.Matricula)">
+                                <div class="seletor-avatar" style="background: @u.Cor">@u.Iniciais</div>
+                                <div class="seletor-info">
+                                    <span class="seletor-nome">@u.Nome</span>
+                                    <span class="seletor-cargo">@u.Cargo</span>
+                                </div>
+                                @if (u.Matricula == ServicoUsuario.Matricula)
+                                {
+                                    <i class="bi bi-check2-circle seletor-check"></i>
+                                }
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+
+        </div>
+    </header>
+
+    <main>
+        @Body
+    </main>
+
+    <footer class="rodape">
+        <span class="rodape-forte">2025 - CN Ativo do FGTS - CEFGA</span>
+        <span>#INTERNO.CONFIDENCIAL</span>
+    </footer>
+
+    @if (_mostrarSeletorUsuario)
+    {
+        <div class="overlay-transparente" @onclick="() => _mostrarSeletorUsuario = false"></div>
+    }
+
+</div>
+
+@code {
+    private bool _menuAberto = true;
+    private bool _mostrarSeletorUsuario;
+
+    // Identidade = matrícula (c123456) — a MESMA que vai no ?matriculaUsuario= do
+    // SignalR e do REST, e que o EmpregadoService/banco usam. Não existe "id" separado.
+    private record UsuarioTeste(string Matricula, string Nome, string Iniciais, string Cargo, string Cor);
+
+    private readonly List<UsuarioTeste> _usuariosTeste =
+    [
+        new("c123456", "Ana Lima",       "AL", "Analista Sênior",    "#005CA9"),
+        new("c102944", "Bruno Costa",    "BC", "Gestor",             "#065F46"),
+        new("c134872", "Carla Mendes",   "CM", "Analista Júnior",    "#7C3AED"),
+        new("c110233", "Diego Santos",   "DS", "Coordenador",        "#B45309"),
+        new("c145097", "Elena Ferreira", "EF", "Diretora Financeira","#BE185D"),
+    ];
+
+    private void AlternarMenu() => _menuAberto = !_menuAberto;
+
+    private void AlternarSeletorUsuario() => _mostrarSeletorUsuario = !_mostrarSeletorUsuario;
+
+    private async Task TrocarUsuario(string matricula)
+    {
+        _mostrarSeletorUsuario = false;
+        if (matricula == ServicoUsuario.Matricula) return;
+
+        // O SinoNotificacoes reage à mudança do parâmetro Matricula:
+        // reconecta o SignalR com a nova identidade e recarrega a contagem.
+        await ServicoUsuario.MudarParaAsync(matricula);
+        StateHasChanged();
+    }
+}
+
+
+<style>
+/* ══════════════════════════════════════════════════════════════
+   LAYOUT — drawer lateral + cabeçalho + conteúdo + rodapé
+   (espelha o MudLayout da Plataforma Operacional)
+   ══════════════════════════════════════════════════════════════ */
+
+main {
+    padding-top: var(--topbar-h);
+    padding-bottom: var(--rodape-h);
+    min-height: 100vh;
+    margin-left: var(--drawer-w);
+    transition: margin-left .25s ease;
+}
+.layout.menu-fechado main {
+    margin-left: 0;
+}
+
+/* ── Cabeçalho (MudAppBar do original) ── */
+.barra-superior {
+    position: fixed;
+    top: 0;
+    left: var(--drawer-w);
+    right: 0;
+    height: var(--topbar-h);
+    background: var(--po-gradiente);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 16px 0 8px;
+    z-index: 200;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, .14);
+    transition: left .25s ease;
+}
+.barra-superior.sem-menu {
+    left: 0;
+}
+
+.btn-hamburger {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    color: #fff;
+    font-size: 24px;
+    flex-shrink: 0;
+    transition: background .15s;
+}
+.btn-hamburger:hover { background: rgba(255, 255, 255, .15); }
+
+.titulo-app {
+    flex: 1;
+    font-size: 19px;
+    font-weight: 500;
+    letter-spacing: .1px;
+    color: #fff;
+    margin-left: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.acoes-area {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+    margin-right: 8px;
+}
+
+/* ── Usuário — "Olá {nome}" como no MudAppBar original ── */
+.usuario-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 40px;
+    padding: 0 10px;
+    border-radius: var(--radius-md);
+    color: #fff;
+    transition: background .15s;
+    margin-left: 4px;
+}
+.usuario-btn:hover { background: rgba(255, 255, 255, .15); }
+.usuario-btn.ativo { background: rgba(255, 255, 255, .22); }
+.usuario-icone { font-size: 20px; }
+.usuario-ola {
+    font-size: 14.5px;
+    font-weight: 400;
+    white-space: nowrap;
+}
+.usuario-chevron { font-size: 11px; color: rgba(255, 255, 255, .85); margin-left: 2px; transition: transform .2s; }
+.usuario-chevron.rotacionado { transform: rotate(180deg); }
+
+/* ── Seletor de usuário (teste) ── */
+.avatar-wrapper { position: relative; }
+
+.seletor-usuario {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    width: 240px;
+    background: #fff;
+    border: 1px solid var(--ink-200);
+    border-radius: var(--radius-xl, 10px);
+    box-shadow: var(--shadow-pop);
+    z-index: 300;
+    overflow: hidden;
+    animation: seletorSlideDown .18s ease;
+}
+
+@@keyframes seletorSlideDown {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.seletor-titulo {
+    padding: 10px 14px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ink-500);
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    border-bottom: 1px solid var(--ink-100);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.seletor-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 14px;
+    text-align: left;
+    transition: background .12s;
+    border-bottom: 1px solid var(--ink-50);
+}
+.seletor-item:hover { background: var(--ink-50); }
+.seletor-item.ativo { background: var(--brand-50); }
+
+.seletor-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.seletor-info {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.3;
+    flex: 1;
+}
+.seletor-nome  { font-size: 12px; font-weight: 600; color: var(--ink-900); }
+.seletor-cargo { font-size: 10px; color: var(--ink-500); }
+
+.seletor-check { color: var(--brand-600, var(--brand-700)); font-size: 14px; flex-shrink: 0; }
+
+/* ── Overlay transparente (fecha o seletor ao clicar fora) ── */
+.overlay-transparente {
+    position: fixed;
+    top: var(--topbar-h);
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 150;
+    background: transparent;
+}
+
+/* ── Rodapé fixo (container-footer-item do original) ── */
+.rodape {
+    position: fixed;
+    bottom: 0;
+    left: var(--drawer-w);
+    right: 0;
+    height: var(--rodape-h);
+    background: var(--po-rodape);
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding-left: 16px;
+    font-size: 12px;
+    color: var(--ink-700);
+    z-index: 180;
+    transition: left .25s ease;
+    border-top: 1px solid var(--ink-100);
+}
+.layout.menu-fechado .rodape {
+    left: 0;
+}
+.rodape-forte {
+    font-weight: 500;
+}
+</style>

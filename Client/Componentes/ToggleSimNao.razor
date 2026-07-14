@@ -1,0 +1,61 @@
+@* Toggle Sim / Não (opcionalmente NSA) — check em pílula segmentada.
+   Uso:  <ToggleSimNao @bind-Value="_fpd.UltimoDesembolso" ComNsa="false" /> *@
+
+<div class="toggle-sn">
+    <button type="button" class="toggle-sn-opc @(Value == "sim" ? "ativo sim" : "")"
+            @onclick='() => Definir("sim")' disabled="@ReadOnly">Sim</button>
+    <button type="button" class="toggle-sn-opc @(Value == "nao" ? "ativo nao" : "")"
+            @onclick='() => Definir("nao")' disabled="@ReadOnly">Não</button>
+    @if (ComNsa)
+    {
+        <button type="button" class="toggle-sn-opc @(Value == "nsa" ? "ativo nsa" : "")"
+                @onclick='() => Definir("nsa")' disabled="@ReadOnly">NSA</button>
+    }
+</div>
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public bool ComNsa { get; set; }
+    [Parameter] public bool ReadOnly { get; set; }
+    [Parameter] public EventCallback AoAlterar { get; set; }
+
+    private async Task Definir(string valor)
+    {
+        // Clicar de novo na opção já ativa não faz nada. IMPORTANTE: não escrevemos
+        // em `Value` aqui — é um [Parameter], e mutá-lo localmente desincroniza o
+        // componente do valor real (que mora no pai), deixando a UI "presa" mesmo
+        // com o clique sendo processado. O valor só muda quando o PAI reatribui o
+        // parâmetro na próxima renderização, via ValueChanged.
+        if (Value == valor) return;
+        await ValueChanged.InvokeAsync(valor);
+        await AoAlterar.InvokeAsync();
+    }
+}
+
+<style>
+.toggle-sn {
+    display: inline-flex;
+    gap: 2px;
+    width: fit-content;
+    background: var(--ink-100);
+    border-radius: var(--radius-full);
+    padding: 2px;
+}
+.toggle-sn-opc {
+    border: none;
+    background: transparent;
+    padding: 3px 12px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--ink-500);
+    border-radius: var(--radius-full);
+    cursor: pointer;
+    font-family: inherit;
+    transition: background .12s, color .12s;
+}
+.toggle-sn-opc:hover:not(:disabled):not(.ativo) { background: var(--ink-200); color: var(--ink-900); }
+.toggle-sn-opc:disabled { cursor: default; }
+/* Marcado = mesmo efeito de UI para Sim e Não (pedido: sem verde/vermelho) */
+.toggle-sn-opc.ativo { background: var(--brand-700); color: #fff; }
+</style>

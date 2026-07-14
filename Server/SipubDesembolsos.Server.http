@@ -1,0 +1,6 @@
+@SipubDesembolsos.Server_HostAddress = http://localhost:5072
+
+GET {{SipubDesembolsos.Server_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
