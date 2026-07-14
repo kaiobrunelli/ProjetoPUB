@@ -109,6 +109,52 @@ public static class ServicoMock
         _         => ObterValidacoesDSB001(),
     };
 
+    // ──────────────────────────────────────────────────────────────────────────
+    // VALIDAÇÕES DO DESEMBOLSO — os MESMOS itens da árvore "Verificações" da
+    // FPD-AF (ver PainelPreencherFpd), agora como checklist de análise do
+    // desembolso: cada item é aprovado individualmente, com comentário.
+    // ──────────────────────────────────────────────────────────────────────────
+    public static List<Validacao> ObterValidacoesFpd(string idDesembolso)
+    {
+        var itens = new (string Titulo, string Detalhe)[]
+        {
+            ("Último desembolso",              "Confere se este não é o primeiro desembolso do contrato e se a funcionalidade/conclusão do anterior foram confirmadas."),
+            ("Licença de operação",             "Verifica se a licença de operação está vigente para a fase atual da obra."),
+            ("Licença de instalação",           "Verifica se a licença de instalação foi emitida e está regular."),
+            ("Tomador adimplente",              "Confirma que o tomador/mutuário não possui pendências financeiras junto ao agente financeiro."),
+            ("Agente Promotor adimplente",      "Confirma que o agente promotor está em situação regular."),
+            ("Placa local",                     "Confirma a instalação da placa de identificação da obra no local."),
+            ("Retorno parcial",                 "Verifica se há retorno parcial de recursos a ser considerado neste desembolso."),
+            ("Excepcionalização",               "Verifica se este desembolso depende de alguma excepcionalização aprovada."),
+            ("CP alterada",                     "Confirma se a contrapartida (CP) informada sofreu alteração em relação ao previsto."),
+        };
+
+        var seed = idDesembolso.GetHashCode();
+        var rnd = new Random(Math.Abs(seed));
+
+        return itens.Select((item, i) =>
+        {
+            // Mantém alguma variação determinística por desembolso, sem exagerar
+            // em pendências — a maioria nasce "a analisar", poucas já inválidas.
+            var status = rnd.NextDouble() switch
+            {
+                < 0.15 => "invalido",
+                < 0.75 => "pendente",
+                _      => "valido",
+            };
+
+            return new Validacao
+            {
+                Numero    = i + 1,
+                Titulo    = item.Titulo,
+                Resultado = status == "valido" ? "Em conformidade" : status == "invalido" ? "Não conforme" : "Aguardando análise",
+                Status    = status,
+                Icone     = "bi-check2-square",
+                Detalhe   = item.Detalhe,
+            };
+        }).ToList();
+    }
+
     // DSB-001 — pendencia: 6 válido, 4 inválido (3 deles com sub-itens)
     private static List<Validacao> ObterValidacoesDSB001() =>
     [
@@ -508,6 +554,10 @@ public static class ServicoMock
                 NumeroContrato = "0512.345/2022-01",
                 Mutuario = new() { Nome = "Prefeitura Municipal de Caruaru", Tipo = "Município" },
                 Af = new() { Nome = "Agência Nordeste — Recife", Sigla = "AF/REC" },
+                AgenteFinanceiro   = "CAIXA ECONOMICA FEDERAL",
+                AgentePromotor     = "MUNICÍPIO DE CARUARU/PE",
+                PrimeiroDesembolso = false,
+                TipoDesembolso     = "normal",
                 Financiamento = new()
                 {
                     Programa           = "Pró-Moradia",
@@ -517,7 +567,10 @@ public static class ServicoMock
                     Fase               = "2ª Medição",
                     PercentualObra     = 62m,
                     Amortizacao        = "SAC / TR",
-                    PercentualContrapartida = 20m
+                    PercentualContrapartida = 20m,
+                    Ve                 = 1_812_500m,
+                    ParticipacaoFgts   = 1_160_000m,
+                    Contrapartida      = 290_000m,
                 }
             };
         }
@@ -531,6 +584,8 @@ public static class ServicoMock
             new DadosAf { Nome = "Agência Centro-Oeste — BSB",  Sigla = "AF/BSB" },
             new DadosAf { Nome = "Agência Sul — Porto Alegre",  Sigla = "AF/POA" },
         };
+        var contrapartidaVlr = row.Valor * 0.2m;
+        var participacaoFgts = row.Valor - contrapartidaVlr;
 
         return new DetalheContrato
         {
@@ -539,6 +594,10 @@ public static class ServicoMock
             NumeroContrato = row.Contrato,
             Mutuario       = new() { Nome = row.Mutuario, Tipo = "Município" },
             Af             = afs[Math.Abs(seed) % afs.Length],
+            AgenteFinanceiro   = "CAIXA ECONOMICA FEDERAL",
+            AgentePromotor     = row.Mutuario.ToUpper(),
+            PrimeiroDesembolso = row.Fase.Contains("1"),
+            TipoDesembolso     = Math.Abs(seed) % 5 == 0 ? "adiantamento" : "normal",
             Financiamento  = new()
             {
                 Programa           = programas[Math.Abs(seed) % programas.Length],
@@ -548,7 +607,10 @@ public static class ServicoMock
                 Fase               = row.Fase,
                 PercentualObra     = 45m + (Math.Abs(seed) % 30),
                 Amortizacao        = "SAC / TR",
-                PercentualContrapartida = 20m
+                PercentualContrapartida = 20m,
+                Ve                 = row.Valor * 1.25m,
+                ParticipacaoFgts   = participacaoFgts,
+                Contrapartida      = contrapartidaVlr,
             }
         };
     }

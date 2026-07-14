@@ -374,7 +374,7 @@
     var desembolsoDialog = ServicoMock.ObterDesembolsos().FirstOrDefault(d => d.Id == _idDialogAberto);
     if (desembolsoDialog is not null)
     {
-        <DialogDetalhes Desembolso="@desembolsoDialog"
+        <DialogDesembolsoFpd Desembolso="@desembolsoDialog"
                         Todos="@buscados"
                         Analista="@ObterAnalista(_idDialogAberto)"
                         AoFechar="@FecharDialog"
