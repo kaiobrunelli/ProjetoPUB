@@ -12,9 +12,13 @@ public class AppDbContext : DbContext, INotificacaoDbContext
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
-    public DbSet<DesembolsoCAD>        Desembolsos           => Set<DesembolsoCAD>();
-    public DbSet<Notificacao>          Notificacoes          => Set<Notificacao>();
-    public DbSet<ControleVisualizacao> ControleVisualizacoes => Set<ControleVisualizacao>();
+    public DbSet<DesembolsoCAD>            Desembolsos              => Set<DesembolsoCAD>();
+    public DbSet<Notificacao>              Notificacoes             => Set<Notificacao>();
+    public DbSet<ControleVisualizacao>     ControleVisualizacoes    => Set<ControleVisualizacao>();
+    public DbSet<FichaPrevisaoDesembolso>  FichasPrevisaoDesembolso => Set<FichaPrevisaoDesembolso>();
+    public DbSet<ValidacaoDesembolso>      ValidacoesDesembolso     => Set<ValidacaoDesembolso>();
+    public DbSet<ComentarioValidacao>      ComentariosValidacao     => Set<ComentarioValidacao>();
+    public DbSet<RegistroDrp>              RegistrosDrp             => Set<RegistroDrp>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -53,6 +57,52 @@ public class AppDbContext : DbContext, INotificacaoDbContext
              .WithMany(n => n.Destinatarios)
              .HasForeignKey(x => x.CodigoNotificacao)
              .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<FichaPrevisaoDesembolso>(e =>
+        {
+            e.ToTable("FichaPrevisaoDesembolso");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).UseIdentityColumn();
+            e.Property(x => x.DesembolsoId).HasMaxLength(20);
+            e.Property(x => x.Gigov).HasMaxLength(20);
+            e.Property(x => x.ContratoAf).HasMaxLength(30);
+        });
+
+        modelBuilder.Entity<ValidacaoDesembolso>(e =>
+        {
+            e.ToTable("ValidacaoDesembolso");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).UseIdentityColumn();
+            e.Property(x => x.DesembolsoId).HasMaxLength(20);
+            e.Property(x => x.Status).HasMaxLength(20);
+            e.HasIndex(x => new { x.DesembolsoId, x.Numero }).IsUnique();
+            e.HasMany(x => x.Comentarios)
+             .WithOne()
+             .HasForeignKey(c => c.ValidacaoDesembolsoId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ComentarioValidacao>(e =>
+        {
+            e.ToTable("ComentarioValidacao");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).UseIdentityColumn();
+            e.Property(x => x.Tipo).HasMaxLength(20);
+            e.Property(x => x.MatriculaAutor).HasMaxLength(100);
+        });
+
+        modelBuilder.Entity<RegistroDrp>(e =>
+        {
+            e.ToTable("RegistroDrp");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).UseIdentityColumn();
+            e.Property(x => x.DesembolsoId).HasMaxLength(20);
+            e.Property(x => x.Gigov).HasMaxLength(20);
+            e.Property(x => x.ContratoDv).HasMaxLength(30);
+            e.Property(x => x.Responsavel).HasMaxLength(100);
+            e.Property(x => x.Gestor).HasMaxLength(100);
+            e.Property(x => x.Baixa).HasMaxLength(100);
         });
     }
 

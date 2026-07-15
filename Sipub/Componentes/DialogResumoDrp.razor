@@ -1,36 +1,26 @@
-@inject IJSRuntime JS
-@inject HttpClient Http
-@inject ServicoUsuario ServicoUsuario
-@using System.Net.Http.Json
 @using System.Globalization
 
 @*
-   DIALOG DESEMBOLSO (modelo FPD) — modal centrado.
-   Decisão de design: o cabeçalho espelha os dados que já foram preenchidos
-   na Ficha de Previsão de Desembolso (FPD-AF) que originou este desembolso —
-   AF, Mutuário/Tomador, Agente Promotor, Primeiro desembolso, Tipo, Valores —
-   em vez de uma lista de "validações de contrato" genéricas e desconectadas
-   do formulário que de fato gerou a solicitação.
+   DIALOG RESUMO DRP — modal centrado (mesmo cabeçalho do DialogDesembolsoFpd),
+   mas 100% somente-leitura: é a checagem final antes/depois da baixa.
 
-   As VALIDAÇÕES continuam existindo como checklist (cada item analisado
-   individualmente, com comentários e tipos positivo/informativo/negativo —
-   um comentário positivo promove o item de "Em análise"/"Inválida" para
-   "Aprovada", igual ao modelo anterior). O que NÃO existe mais é a árvore de
-   SUB-itens dentro de cada validação — aqui cada validação é um item único,
-   plano, sem filhos.
+   Duas abas:
+   • Resumo    — a mesma checklist de validações do dialog de desembolso, sem
+     edição, com aviso quando alguma validação tem comentário registrado.
+   • Histórico — timeline de toda a atividade do desembolso (o que antes era
+     a aba "Atividade" do DialogDesembolsoFpd; agora só existe aqui, na DRP).
 *@
 
 <div class="overlay-dfp" @onclick="FecharDialog">
     <div class="dfp" @onclick:stopPropagation role="dialog" aria-modal="true">
 
         @{
-            var detalhe = ServicoMock.ObterDetalheContrato(Desembolso);
-            var fin     = detalhe.Financiamento;
-            var validacoes    = ObterValidacoesEfetivas();
-            var totalValidas  = validacoes.Count(v => v.Status == "valido");
-            var totalInvalidas = validacoes.Count(v => v.Status == "invalido");
-            var totalPendentes = validacoes.Count(v => v.Status == "pendente");
-            var podeAprovar    = totalInvalidas == 0 && totalPendentes == 0;
+            var detalhe        = ServicoMock.ObterDetalheContrato(Desembolso);
+            var fin             = detalhe.Financiamento;
+            var validacoes      = ObterValidacoesEfetivas();
+            var totalValidas    = validacoes.Count(v => v.Status == "valido");
+            var totalInvalidas  = validacoes.Count(v => v.Status == "invalido");
+            var totalPendentes  = validacoes.Count(v => v.Status == "pendente");
         }
 
         <!-- ── TOP BAR ── -->
@@ -56,7 +46,7 @@
             </div>
         </div>
 
-        <!-- ── CABEÇALHO — dados da FPD que gerou este desembolso ── -->
+        <!-- ── CABEÇALHO — dados da FPD que gerou este desembolso (mesmo do dialog de desembolso) ── -->
         <div class="dfp-header">
 
             <div class="dfp-titulo-row">
@@ -88,17 +78,6 @@
                             <span class="dfp-analista-nome">@Analista.Nome</span>
                         }
                     </div>
-                </div>
-                <div class="dfp-acoes">
-                    <button class="btn-vincular" @onclick="() => _popoverAberto = !_popoverAberto">
-                        <i class="bi bi-person"></i>
-                        @(Analista is null ? "Vincular" : "Alterar vínculo")
-                        <i class="bi bi-chevron-down btn-chevron"></i>
-                    </button>
-                    <button class="btn-remover-vinculo @(Analista is null ? "btn-remover-desativo" : "")"
-                            @onclick="RemoverAnalista" disabled="@(Analista is null)">
-                        <i class="bi bi-x-lg"></i> Remover vínculo
-                    </button>
                 </div>
             </div>
 
@@ -148,10 +127,7 @@
                 </div>
             </div>
 
-            <!-- Valores (mesmos campos da etapa "Valores" da FPD) — lista em coluna
-                 única, mais fácil de ler que cartões lado a lado. O valor principal
-                 se destaca só pela cor (linha com fundo azul clarinho), não pelo
-                 tamanho da fonte. -->
+            <!-- Valores -->
             <div class="dfp-valores">
                 <div class="dfp-secao-titulo">Valores</div>
                 <div class="dfp-linha dfp-linha-destaque">
@@ -182,23 +158,36 @@
 
         <!-- ── Abas ── -->
         <div class="dfp-tabs">
-            <button class="dfp-tab ativa">
-                <i class="bi bi-list-check"></i> Validações
+            <button class="dfp-tab @(_aba == "resumo" ? "ativa" : "")" @onclick='() => _aba = "resumo"'>
+                <i class="bi bi-clipboard-check"></i> Resumo
                 <span class="dfp-tab-badge @(totalInvalidas + totalPendentes > 0 ? "pendente" : "ok")">
                     @totalValidas/@validacoes.Count
                 </span>
             </button>
+            <button class="dfp-tab @(_aba == "historico" ? "ativa" : "")" @onclick='() => _aba = "historico"'>
+                <i class="bi bi-clock-history"></i> Histórico
+            </button>
         </div>
 
         <!-- ── Corpo ── -->
-        <div class="dfp-corpo-validacoes">
+        @if (_aba == "resumo")
+        {
+            <div class="dfp-corpo-validacoes">
 
                 <!-- Sidebar agrupada por status -->
                 <aside class="dfp-sidebar">
                     @{
-                        var invalidas = validacoes.Where(v => v.Status == "invalido").ToList();
+                        var invalidas  = validacoes.Where(v => v.Status == "invalido").ToList();
                         var pendentesL = validacoes.Where(v => v.Status == "pendente").ToList();
-                        var validasL  = validacoes.Where(v => v.Status == "valido").ToList();
+                        var validasL   = validacoes.Where(v => v.Status == "valido").ToList();
+                    }
+
+                    @if (TotalComComentario > 0)
+                    {
+                        <div class="dfp-resumo-aviso">
+                            <i class="bi bi-chat-text-fill"></i>
+                            <span><strong>@TotalComComentario</strong> com comentário</span>
+                        </div>
                     }
 
                     @if (invalidas.Any())
@@ -285,98 +274,51 @@
                             {
                                 <p class="dfp-painel-val-detalhe">@selecionada.Detalhe</p>
                             }
-                            <FioComentario Comentarios="@comentarios"
-                                           AoAdicionarComentario="@(c => AdicionarComentario(chave, c))"
-                                           AoEditarComentario="@(c => EditarComentario(chave, c))" />
+                            <FioComentario Comentarios="@comentarios" ApenasLeitura="true" />
                         </div>
                     }
                 </section>
             </div>
+        }
+        else
+        {
+            <div class="dfp-corpo">
+                <div class="dfp-timeline">
+                    @foreach (var evento in MontarTimeline())
+                    {
+                        <div class="dfp-evento @evento.Tipo">
+                            <div class="dfp-evento-ponto"><i class="bi @evento.Icone"></i></div>
+                            <div class="dfp-evento-corpo">
+                                <div class="dfp-evento-texto">@((MarkupString)evento.Texto)</div>
+                                <div class="dfp-evento-quando">@evento.Quando</div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
 
         <!-- ── Rodapé ── -->
         <div class="dfp-rodape">
-            @if (_modoRejeicao)
-            {
-                <input class="input-coord" type="text" placeholder="Código da coordenação (ex: COORD-SIPUB)"
-                       @bind="_codigoCoordenacao" @bind:event="oninput" />
-                <button class="btn-recusar-cancelar" @onclick="CancelarRejeicao">Cancelar</button>
-                <button class="btn-recusar" @onclick="RejeitarDesembolso"
-                        disabled="@(string.IsNullOrWhiteSpace(_codigoCoordenacao) || _processandoAcao)">
-                    <i class="bi bi-x-circle"></i> Confirmar rejeição
-                </button>
-            }
-            else
-            {
-                <div class="dfp-rodape-status">
-                    @if (podeAprovar)
-                    {
-                        <i class="bi bi-check-circle-fill ok"></i>
-                        <span>Todas as validações concluídas — pronto para aprovar</span>
-                    }
-                    else
-                    {
-                        <i class="bi bi-lock-fill falha"></i>
-                        <span>
-                            @if (totalInvalidas > 0) { <text><strong>@totalInvalidas inválida@(totalInvalidas > 1 ? "s" : "")</strong></text> }
-                            @if (totalInvalidas > 0 && totalPendentes > 0) { <text> e </text> }
-                            @if (totalPendentes > 0) { <text><strong>@totalPendentes em análise</strong></text> }
-                            @((totalInvalidas + totalPendentes) > 1 ? " bloqueiam" : " bloqueia") a aprovação
-                        </span>
-                    }
-                </div>
-                <button class="btn-recusar" @onclick="() => _modoRejeicao = true" disabled="@_processandoAcao">
-                    <i class="bi bi-x-circle"></i> Recusar desembolso
-                </button>
-                <button class="btn-aprovar" disabled="@(!podeAprovar || _processandoAcao)" @onclick="AprovarDesembolso">
-                    @if (_processandoAcao)
-                    {
-                        <i class="bi bi-arrow-repeat spinner"></i>
-                        <span>Processando…</span>
-                    }
-                    else
-                    {
-                        <i class="bi @(podeAprovar ? "bi-check-circle" : "bi-lock")"></i>
-                        <span>Aprovar desembolso</span>
-                    }
-                </button>
-            }
-        </div>
-
-        <!-- Popover de atribuição -->
-        @if (_popoverAberto)
-        {
-            <div class="popover-atribuicao">
-                <div class="popover-titulo">Atribuir analista</div>
-                @foreach (var f in ServicoMock.ObterFuncionarios())
-                {
-                    <button class="popover-item" @onclick="() => AtribuirAnalista(f)">
-                        <div class="popover-avatar" style="background: @f.Cor">@f.Iniciais</div>
-                        <span>@f.Nome</span>
-                    </button>
-                }
-                @if (Analista is not null)
-                {
-                    <button class="popover-remover" @onclick="RemoverAnalista">Remover atribuição</button>
-                }
+            <div class="dfp-rodape-status">
+                <i class="bi bi-clipboard-check ok"></i>
+                <span>Checagem final — somente visualização</span>
             </div>
-        }
+            <button class="btn-recusar-cancelar" @onclick="FecharDialog">Fechar</button>
+        </div>
     </div>
 </div>
 
 @code {
     [Parameter, EditorRequired] public DesembolsoCAD       Desembolso { get; set; } = null!;
     [Parameter, EditorRequired] public List<DesembolsoCAD> Todos      { get; set; } = [];
-    [Parameter] public Funcionario?  Analista    { get; set; }
-    [Parameter] public EventCallback AoFechar    { get; set; }
-    [Parameter] public EventCallback<string>       AoNavegar  { get; set; }
-    [Parameter] public EventCallback<Funcionario?> AoAtribuir { get; set; }
+    [Parameter] public Funcionario?  Analista  { get; set; }
+    [Parameter] public EventCallback AoFechar  { get; set; }
+    [Parameter] public EventCallback<string> AoNavegar { get; set; }
 
+    private string _aba = "resumo";
     private string? _chaveSelecionada;
     private readonly Dictionary<string, List<Comentario>> _comentarios = new();
-    private bool _popoverAberto;
-    private bool _modoRejeicao;
-    private bool _processandoAcao;
-    private string _codigoCoordenacao = "";
 
     protected override void OnInitialized()
     {
@@ -392,44 +334,12 @@
     private async Task Proximo()  { if (TemProximo)  await AoNavegar.InvokeAsync(Todos[IndiceAtual + 1].Id); }
     private async Task FecharDialog() => await AoFechar.InvokeAsync();
 
-    private List<Comentario> ObterComentarios(string chave) => _comentarios.TryGetValue(chave, out var l) ? l : (_comentarios[chave] = []);
+    private List<Comentario> ObterComentarios(string chave) => _comentarios.TryGetValue(chave, out var l) ? l : [];
 
-    // ── Comentários das validações — endpoints reais (api/desembolso/{id}/validacoes/{numero}/comentarios).
-    // A checklist em si (ObterValidacoesFpd) ainda é mock; a chamada tolera falha
-    // (ex.: desembolso "DSB-00x" de demonstração, sem registro correspondente no
-    // banco) sem travar o fluxo local — mesmo padrão de AprovarDesembolso/RejeitarDesembolso.
-    private async Task AdicionarComentario(string chave, Comentario c)
-    {
-        ObterComentarios(chave).Add(c);
-        try
-        {
-            var numero = int.Parse(chave.TrimStart('v'));
-            var req = new { c.Tipo, c.Texto, c.Autor, c.MatriculaAutor };
-            var resposta = await Http.PostAsJsonAsync($"api/desembolso/{Desembolso.Id}/validacoes/{numero}/comentarios", req);
-            if (resposta.IsSuccessStatusCode)
-            {
-                var criado = await resposta.Content.ReadFromJsonAsync<Comentario>();
-                if (criado is not null) c.Id = criado.Id;
-            }
-        }
-        catch (Exception ex) { Console.WriteLine($"[DialogFPD] Adicionar comentário: {ex.Message}"); }
-    }
+    private int TotalComComentario => ObterValidacoesEfetivas().Count(v => ObterComentarios($"v{v.Numero}").Any());
 
-    private async Task EditarComentario(string chave, Comentario editado)
-    {
-        try
-        {
-            var numero = int.Parse(chave.TrimStart('v'));
-            var req = new { Texto = editado.Texto, MatriculaSolicitante = ServicoUsuario.Matricula };
-            await Http.PutAsJsonAsync(
-                $"api/desembolso/{Desembolso.Id}/validacoes/{numero}/comentarios/{editado.Id}", req);
-        }
-        catch (Exception ex) { Console.WriteLine($"[DialogFPD] Editar comentário: {ex.Message}"); }
-    }
-
-    // ── Checklist plano (sem sub-itens), com os MESMOS itens da árvore
-    // "Verificações" da FPD-AF. Um comentário POSITIVO promove o item de
-    // "em análise"/"inválida" para "aprovada" — mesma regra do modelo anterior.
+    // ── Checklist plano, mesma regra do dialog de desembolso: comentário
+    // positivo promove o item de "em análise"/"inválida" para "aprovada". ──
     private List<Validacao> ObterValidacoesEfetivas()
     {
         var validacoes = ServicoMock.ObterValidacoesFpd(Desembolso.Id);
@@ -453,57 +363,41 @@
         }).ToList();
     }
 
-    // ── Ações (mesmos endpoints dos demais dialogs de desembolso) ──
-    private async Task AprovarDesembolso()
+    // ── Histórico: timeline com todos os comentários de todas as validações ──
+    private record EventoTimeline(string Icone, string Texto, string Quando, string Tipo);
+
+    private List<EventoTimeline> MontarTimeline()
     {
-        _processandoAcao = true;
-        StateHasChanged();
-        try
+        var cultura = new CultureInfo("pt-BR");
+        var criacao = Desembolso.PrazoFinal.AddDays(-21);
+        var eventos = new List<EventoTimeline>
         {
-            var req = new { MatriculaUsuario = ServicoUsuario.Matricula, UsuarioNome = ServicoUsuario.Nome };
-            await Http.PutAsJsonAsync($"api/desembolso/{Desembolso.Id}/aprovar", req);
-        }
-        catch (Exception ex) { Console.WriteLine($"[DialogFPD] Erro ao aprovar: {ex.Message}"); }
-        finally { _processandoAcao = false; }
-        await AoFechar.InvokeAsync();
-    }
+            new("bi-inbox", $"Desembolso <strong>{Desembolso.Id}</strong> recebido para análise",
+                criacao.ToString("dd MMM yyyy", cultura), "neutro"),
+        };
 
-    private void CancelarRejeicao()
-    {
-        _modoRejeicao = false;
-        _codigoCoordenacao = "";
-    }
+        if (Analista is not null)
+            eventos.Add(new("bi-person-check", $"Atribuído a <strong>{Analista.Nome}</strong>",
+                criacao.AddDays(1).ToString("dd MMM yyyy", cultura), "info"));
 
-    private async Task RejeitarDesembolso()
-    {
-        if (string.IsNullOrWhiteSpace(_codigoCoordenacao)) return;
-        _processandoAcao = true;
-        StateHasChanged();
-        try
+        foreach (var (chave, lista) in _comentarios)
+            foreach (var c in lista)
+                eventos.Add(new(
+                    c.Tipo == "positivo" ? "bi-check-circle" : c.Tipo == "negativo" ? "bi-x-circle" : "bi-chat-text",
+                    $"<strong>{c.Autor}</strong> comentou em <strong>{chave.ToUpper()}</strong>: “{c.Texto}”",
+                    ServicoMock.FormatarTempo(c.Timestamp),
+                    c.Tipo == "negativo" ? "falha" : c.Tipo == "positivo" ? "ok" : "info"));
+
+        eventos.Add(Desembolso.Status switch
         {
-            var req = new { MatriculaUsuario = ServicoUsuario.Matricula, UsuarioNome = ServicoUsuario.Nome, CodigoCoordenacao = _codigoCoordenacao };
-            await Http.PutAsJsonAsync($"api/desembolso/{Desembolso.Id}/rejeitar", req);
-        }
-        catch (Exception ex) { Console.WriteLine($"[DialogFPD] Erro ao rejeitar: {ex.Message}"); }
-        finally
-        {
-            _processandoAcao = false;
-            _modoRejeicao = false;
-            _codigoCoordenacao = "";
-        }
-        await AoFechar.InvokeAsync();
-    }
+            "aprovado" => new("bi-patch-check", "Desembolso <strong>aprovado</strong>",
+                DateTime.Today.ToString("dd MMM yyyy", cultura), "ok"),
+            "pendencia" => new("bi-exclamation-triangle", "Pendências identificadas — <strong>aguardando tratativa</strong>",
+                "agora", "falha"),
+            _ => new("bi-hourglass-split", "Em análise — <strong>aguardando decisão</strong>", "agora", "neutro")
+        });
 
-    private async Task AtribuirAnalista(Funcionario f)
-    {
-        _popoverAberto = false;
-        await AoAtribuir.InvokeAsync(f);
-    }
-
-    private async Task RemoverAnalista()
-    {
-        _popoverAberto = false;
-        await AoAtribuir.InvokeAsync(null);
+        return eventos;
     }
 }
 
@@ -570,14 +464,6 @@
 .analista-mini { width: 20px; height: 20px; border-radius: 50%; color: #fff; font-size: 8.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .dfp-analista-nome { font-size: 12px; font-weight: 500; color: var(--ink-600); }
 
-.dfp-acoes { display: flex; align-items: center; gap: 6px; flex-shrink: 0; padding-top: 2px; }
-.btn-vincular { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--brand-200); background: var(--brand-50); border-radius: var(--radius-md); padding: 5px 12px; font-size: 11px; font-weight: 700; font-family: inherit; color: var(--brand-800, #004F93); cursor: pointer; transition: background .12s; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
-.btn-vincular:hover { background: var(--brand-100); }
-.btn-chevron { opacity: .7; font-size: 9px !important; }
-.btn-remover-vinculo { display: inline-flex; align-items: center; gap: 5px; border-radius: var(--radius-md); padding: 5px 12px; font-size: 11px; font-weight: 700; font-family: inherit; cursor: pointer; transition: background .12s, opacity .12s; border: 1px solid #FBCBC7; background: #FEF6F5; color: #9A2A1F; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
-.btn-remover-vinculo:hover:not(:disabled) { background: #FCE6E3; }
-.btn-remover-desativo, .btn-remover-vinculo:disabled { border-color: var(--ink-100) !important; background: #fff !important; color: var(--ink-300) !important; cursor: not-allowed !important; box-shadow: none !important; }
-
 /* Dados do contrato — grid 2 colunas */
 .dfp-dados-grid { display: flex; border-bottom: 1px solid var(--ink-100); }
 .dfp-coluna { flex: 1; padding: 10px 24px; min-width: 0; }
@@ -593,9 +479,6 @@
 .obra-track { width: 64px; height: 6px; background: var(--ink-200); border-radius: var(--radius-full); overflow: hidden; flex-shrink: 0; }
 .obra-fill { height: 100%; background: var(--brand-700, #005CA9); border-radius: var(--radius-full); }
 
-/* Valores — lista em coluna única (mesmo padrão das linhas de "Dados do
-   contrato"), mais fácil de ler que cartões lado a lado. O valor principal
-   se distingue só pela cor de fundo da linha, não pelo tamanho da fonte. */
 .dfp-valores { padding: 10px 24px 14px; }
 .dfp-linha-destaque { background: var(--brand-50); margin: 0 -8px; padding: 7px 8px; border-radius: var(--radius-md); border-bottom-color: transparent; }
 .dfp-linha-destaque .dfp-rotulo { color: var(--brand-700); font-weight: 600; }
@@ -611,10 +494,13 @@
 .dfp-tab-badge.pendente { background: var(--warn-bg, #FFEFD6); color: #9A5B00; }
 
 /* ── Corpo ── */
-/* Validações — sidebar agrupada por status + painel de detalhe (modelo original) */
+.dfp-corpo { flex: 1; overflow-y: auto; padding: 16px 24px; min-height: 220px; background: #fff; }
+
 .dfp-corpo-validacoes { flex: 1; display: flex; overflow: hidden; min-height: 0; }
 
 .dfp-sidebar { width: 240px; flex-shrink: 0; border-right: 1px solid var(--ink-200); overflow-y: auto; display: flex; flex-direction: column; background: #F4F7FA; padding: 8px 0; gap: 4px; }
+.dfp-resumo-aviso { display: flex; align-items: center; gap: 6px; margin: 0 10px 6px; padding: 8px 10px; border: 1px solid var(--brand-200); background: var(--brand-50); border-radius: var(--radius-md); font-size: 11px; color: var(--brand-800); }
+.dfp-resumo-aviso i { color: var(--brand-700); }
 .dfp-sidebar-grupo-titulo { display: flex; align-items: center; gap: 6px; padding: 8px 14px 4px; position: sticky; top: 0; z-index: 1; background: #F4F7FA; }
 .dfp-sidebar-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 .dfp-dot-invalido { background: var(--err); }
@@ -638,31 +524,25 @@
 .dfp-painel-val-num { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: var(--ink-100); border: 1px solid var(--ink-200); font-family: monospace; font-size: 11px; font-weight: 800; color: var(--ink-700); margin-right: 10px; flex-shrink: 0; }
 .dfp-painel-val-detalhe { font-size: 12.5px; line-height: 1.6; color: var(--ink-500); margin: 0 0 16px; }
 
+/* Timeline */
+.dfp-timeline { position: relative; padding-left: 6px; }
+.dfp-evento { display: flex; gap: 12px; padding-bottom: 18px; position: relative; }
+.dfp-evento::before { content: ""; position: absolute; left: 13px; top: 28px; bottom: 0; width: 2px; background: var(--ink-100); }
+.dfp-evento:last-child::before { display: none; }
+.dfp-evento-ponto { width: 28px; height: 28px; border-radius: 50%; background: #fff; border: 1px solid var(--ink-200); display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--ink-500); flex-shrink: 0; z-index: 1; }
+.dfp-evento.ok    .dfp-evento-ponto { border-color: var(--ok);  color: var(--ok);  background: var(--ok-bg); }
+.dfp-evento.falha .dfp-evento-ponto { border-color: var(--err); color: var(--err); background: var(--err-bg); }
+.dfp-evento.info  .dfp-evento-ponto { border-color: var(--brand-300); color: var(--brand-700); background: var(--brand-50); }
+.dfp-evento-corpo { flex: 1; padding-top: 3px; }
+.dfp-evento-texto { font-size: 12.5px; color: var(--ink-700); line-height: 1.5; }
+.dfp-evento-quando { font-size: 10.5px; color: var(--ink-400, var(--ink-300)); margin-top: 3px; }
+
 /* ── Rodapé ── */
 .dfp-rodape { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-top: 1px solid var(--ink-200); flex-shrink: 0; background: var(--ink-50); }
 .dfp-rodape-status { flex: 1; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-500); min-width: 0; }
-.dfp-rodape-status .ok    { color: var(--ok); }
-.dfp-rodape-status .falha { color: var(--err); }
-.btn-recusar { display: flex; align-items: center; gap: 5px; height: 32px; padding: 0 14px; border-radius: var(--radius-md); font-size: 12px; font-weight: 600; color: var(--err); background: var(--err-bg); border: 1px solid #f5c0bb; transition: background .15s; flex-shrink: 0; }
-.btn-recusar:hover:not(:disabled) { background: #f8d8d5; }
-.btn-aprovar { display: flex; align-items: center; gap: 5px; height: 32px; padding: 0 16px; border-radius: var(--radius-md); font-size: 12px; font-weight: 600; color: #fff; background: var(--ok); border: none; transition: background .15s, opacity .15s; flex-shrink: 0; }
-.btn-aprovar:hover:not(:disabled) { background: #155e3b; }
-.btn-aprovar:disabled { opacity: .45; cursor: not-allowed; }
-.input-coord { flex: 1; height: 32px; border: 1px solid var(--ink-200); border-radius: var(--radius-md); padding: 0 10px; font-size: 12px; font-family: inherit; color: var(--ink-900); background: #fff; outline: none; transition: border-color .15s; }
-.input-coord:focus { border-color: var(--brand-500); }
+.dfp-rodape-status .ok { color: var(--ok); }
 .btn-recusar-cancelar { display: flex; align-items: center; height: 32px; padding: 0 14px; border-radius: var(--radius-md); font-size: 12px; font-weight: 600; color: var(--ink-500); background: #fff; border: 1px solid var(--ink-200); transition: background .15s; }
 .btn-recusar-cancelar:hover { background: var(--ink-50); }
-
-/* Popover de atribuição */
-.popover-atribuicao { position: absolute; top: 56px; right: 16px; width: 220px; background: #fff; border: 1px solid var(--ink-200); border-radius: var(--radius-lg); box-shadow: var(--shadow-pop); z-index: 10; overflow: hidden; animation: slideDown .18s ease; }
-.popover-titulo { padding: 8px 12px; font-size: 11px; font-weight: 600; color: var(--ink-500); text-transform: uppercase; letter-spacing: .5px; border-bottom: 1px solid var(--ink-100); }
-.popover-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 12px; font-size: 12px; font-weight: 500; color: var(--ink-900); background: transparent; border-bottom: 1px solid var(--ink-50); transition: background .12s; }
-.popover-item:hover { background: var(--ink-50); }
-.popover-avatar { width: 24px; height: 24px; border-radius: 50%; color: #fff; font-size: 9px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.popover-remover { width: 100%; padding: 7px 12px; font-size: 11px; color: var(--err); background: transparent; text-align: left; transition: background .12s; }
-.popover-remover:hover { background: var(--err-bg); }
-
-.spinner { animation: girar .8s linear infinite; display: inline-block; }
 
 @@media (max-width: 720px) {
     .dfp-dados-grid { flex-direction: column; }

@@ -111,12 +111,11 @@
 
 @if (_resumoDesembolso is not null)
 {
-    <!-- Checagem final: espelho do desembolso, somente leitura -->
-    <DialogDetalhesV2 Desembolso="_resumoDesembolso"
-                      Todos="_desembolsosParaResumo"
-                      SomenteLeitura="true"
-                      AoFechar="() => _resumoDesembolso = null"
-                      AoNavegar="id => _resumoDesembolso = _desembolsosParaResumo.FirstOrDefault(d => d.Id == id)" />
+    <!-- Checagem final: espelho do desembolso, somente leitura (Resumo + Histórico) -->
+    <DialogResumoDrp Desembolso="_resumoDesembolso"
+                     Todos="_desembolsosParaResumo"
+                     AoFechar="() => _resumoDesembolso = null"
+                     AoNavegar="id => _resumoDesembolso = _desembolsosParaResumo.FirstOrDefault(d => d.Id == id)" />
 }
 
 @code {

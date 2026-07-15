@@ -1,4 +1,4 @@
-namespace SipubDesembolsos.Client.Servicos;
+namespace PlataformaNotificacao.UI.Servicos;
 
 public class ServicoUsuario
 {

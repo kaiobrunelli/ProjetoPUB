@@ -3,7 +3,7 @@ using PlataformaNotificacao.Domain;
 using PlataformaNotificacao.Domain.Enum;
 using System.Collections.Concurrent;
 
-namespace SipubDesembolsos.Client.Servicos;
+namespace PlataformaNotificacao.UI.Servicos;
 
 /// <summary>
 /// Camada de TRANSPORTE SignalR — dona única da HubConnection.

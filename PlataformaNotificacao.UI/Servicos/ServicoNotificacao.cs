@@ -1,7 +1,7 @@
 using PlataformaNotificacao.Domain;
 using PlataformaNotificacao.Domain.Enum;
 
-namespace SipubDesembolsos.Client.Servicos;
+namespace PlataformaNotificacao.UI.Servicos;
 
 /// <summary>
 /// Camada de DOMÍNIO das notificações em tempo real.

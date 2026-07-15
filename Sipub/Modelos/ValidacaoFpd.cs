@@ -1,4 +1,4 @@
-namespace SipubDesembolsos.Client.Modelos;
+namespace SipubDesembolsos.Sipub.Modelos;
 
 /// <summary>
 /// Dados da FPD enviados do front para a API validar. Booleanos: o que não vier

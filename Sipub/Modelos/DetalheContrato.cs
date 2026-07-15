@@ -1,4 +1,4 @@
-namespace SipubDesembolsos.Client.Modelos;
+namespace SipubDesembolsos.Sipub.Modelos;
 
 public class DetalheContrato
 {

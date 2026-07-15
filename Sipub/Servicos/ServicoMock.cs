@@ -1,7 +1,7 @@
-using SipubDesembolsos.Client.Modelos;
+using SipubDesembolsos.Sipub.Modelos;
 using System.Globalization;
 
-namespace SipubDesembolsos.Client.Servicos;
+namespace SipubDesembolsos.Sipub.Servicos;
 
 public static class ServicoMock
 {

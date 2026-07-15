@@ -1,11 +1,14 @@
-namespace SipubDesembolsos.Client.Modelos;
+namespace SipubDesembolsos.Sipub.Modelos;
 
 public class Comentario
 {
-    public string Tipo { get; set; } = "informativo"; // positivo | informativo | negativo
-    public string Texto { get; set; } = "";
-    public string Autor { get; set; } = "";
-    public DateTime Timestamp { get; set; } = DateTime.Now;
+    public int      Id             { get; set; }
+    public string   Tipo           { get; set; } = "informativo"; // positivo | informativo | negativo
+    public string   Texto          { get; set; } = "";
+    public string   Autor          { get; set; } = "";
+    public string   MatriculaAutor { get; set; } = "";
+    public DateTime Timestamp      { get; set; } = DateTime.Now;
+    public DateTime? EditadoEm     { get; set; }
 }
 
 public static class TiposComentario

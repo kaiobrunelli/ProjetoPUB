@@ -1,11 +1,9 @@
-namespace SipubDesembolsos.Sipub.Modelos;
+namespace SipubDesembolsos.Server.Modelos;
 
 /// <summary>
-/// Requisição de envio da FPD-AF — espelha todos os campos capturados no
-/// formulário (marcados ou não), já mapeados a partir de <see cref="PreenchimentoFpd"/>
-/// via <c>MontarRequisicaoSolicitacao()</c>. Pronta para ser consumida por um
-/// endpoint POST (ex.: <c>api/fpd/solicitar</c>) assim que ele existir no servidor —
-/// o formulário já monta e tenta enviar esse objeto a cada clique em "Solicitar".
+/// Requisição de envio da FPD-AF — espelha campo a campo
+/// <c>Client.Modelos.SolicitacaoFpdRequest</c>, montada pelo formulário a cada
+/// clique em "Solicitar" (ver <c>PainelPreencherFpd.MontarRequisicaoSolicitacao</c>).
 /// </summary>
 public class SolicitacaoFpdRequest
 {
@@ -30,7 +28,7 @@ public class SolicitacaoFpdRequest
     public string CnpjAgentePromotor   { get; set; } = "";
     public string Programa             { get; set; } = "";
 
-    // ── Sim/Não (sim | nao | nsa | null) — cada campo diz se foi marcado e com quê ──
+    // ── Sim/Não (sim | nao | nsa | null) ──
     public string? UltimoDesembolso   { get; set; }
     public string? Funcionalidade     { get; set; }
     public string? Conclusao          { get; set; }

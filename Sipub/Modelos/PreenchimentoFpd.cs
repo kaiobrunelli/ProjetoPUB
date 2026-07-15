@@ -1,4 +1,4 @@
-namespace SipubDesembolsos.Client.Modelos;
+namespace SipubDesembolsos.Sipub.Modelos;
 
 /// <summary>Dados da Ficha de Previsão de Desembolso (FPD-AF).</summary>
 public class PreenchimentoFpd

@@ -1,7 +1,8 @@
-namespace SipubDesembolsos.Client.Modelos;
+namespace SipubDesembolsos.Sipub.Modelos;
 
 public class Validacao
 {
+    public int Id { get; set; }
     public int Numero { get; set; }
     public string Titulo { get; set; } = "";
     public string Resultado { get; set; } = "";

@@ -35,6 +35,8 @@ builder.Services.AddScoped<INotificacaoService>(provider =>
 // ── Domain Events ──────────────────────────────────────────────────────────
 builder.Services.AddScoped<IPublicador, Publicador>();
 builder.Services.AddScoped<ServicoDesembolso>();
+builder.Services.AddScoped<ServicoFpd>();
+builder.Services.AddScoped<ServicoDrp>();
 
 builder.Services.AddScoped<IEventHandler<DesembolsoAprovadoEvento>,   NotificarAprovacaoHandler>();
 builder.Services.AddScoped<IEventHandler<DesembolsoRejeitadoEvento>,  NotificarRejeicaoHandler>();

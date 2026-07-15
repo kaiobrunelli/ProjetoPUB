@@ -1,17 +1,44 @@
 @* Fio de comentários de uma validação *@
+@inject ServicoUsuario ServicoUsuario
 
 <div class="fio">
     @foreach (var c in Comentarios)
     {
         var cfg = TiposComentario.Configs.GetValueOrDefault(c.Tipo) ?? TiposComentario.Configs["informativo"];
+        var emEdicao = _editandoId == c.Id;
+        var podeEditar = !ApenasLeitura && c.MatriculaAutor == ServicoUsuario.Matricula;
         <div class="comentario" style="background: @cfg.CorFundo">
             <div class="comentario-cabecalho">
                 <span class="comentario-ponto" style="background: @cfg.CorPonto"></span>
                 <span class="comentario-tipo" style="color: @cfg.CorTexto">@NomeTipo(c.Tipo)</span>
                 <span class="comentario-autor">@c.Autor</span>
+                @if (c.EditadoEm is not null)
+                {
+                    <span class="comentario-editado">(editado)</span>
+                }
                 <span class="comentario-tempo">@ServicoMock.FormatarTempo(c.Timestamp)</span>
+                @if (podeEditar && !emEdicao)
+                {
+                    <button class="btn-editar-comentario" @onclick="() => IniciarEdicao(c)" title="Editar comentário">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                }
             </div>
-            <p class="comentario-texto">@c.Texto</p>
+
+            @if (emEdicao)
+            {
+                <textarea class="form-textarea form-textarea-edicao" rows="3" @bind="_textoEdicao" @bind:event="oninput"></textarea>
+                <div class="edicao-acoes">
+                    <button class="btn-cancelar" @onclick="CancelarEdicao">Cancelar</button>
+                    <button class="btn-salvar-tratativa" @onclick="() => SalvarEdicao(c)" disabled="@string.IsNullOrWhiteSpace(_textoEdicao)">
+                        <i class="bi bi-check2"></i> Salvar edição
+                    </button>
+                </div>
+            }
+            else
+            {
+                <p class="comentario-texto">@c.Texto</p>
+            }
         </div>
     }
 
@@ -77,6 +104,7 @@
 @code {
     [Parameter, EditorRequired] public List<Comentario> Comentarios           { get; set; } = [];
     [Parameter] public EventCallback<Comentario>        AoAdicionarComentario { get; set; }
+    [Parameter] public EventCallback<Comentario>        AoEditarComentario    { get; set; }
     [Parameter] public bool                             ApenasLeitura         { get; set; }
     [Parameter] public bool                             ApenasInformativo     { get; set; }
 
@@ -84,6 +112,9 @@
     private bool   _comFoco     = false;
     private string _novoTipo    = "informativo";
     private string _novoTexto   = "";
+
+    private int?   _editandoId;
+    private string _textoEdicao = "";
 
     protected override void OnParametersSet()
     {
@@ -96,10 +127,11 @@
 
         var novoComentario = new Comentario
         {
-            Tipo      = _novoTipo,
-            Texto     = _novoTexto.Trim(),
-            Autor     = "Karina Souto",
-            Timestamp = DateTime.Now
+            Tipo           = _novoTipo,
+            Texto          = _novoTexto.Trim(),
+            Autor          = ServicoUsuario.Nome,
+            MatriculaAutor = ServicoUsuario.Matricula,
+            Timestamp      = DateTime.Now
         };
 
         await AoAdicionarComentario.InvokeAsync(novoComentario);
@@ -112,6 +144,29 @@
         _novoTexto   = "";
         _novoTipo    = "informativo";
         _comFoco     = false;
+    }
+
+    private void IniciarEdicao(Comentario c)
+    {
+        _editandoId  = c.Id;
+        _textoEdicao = c.Texto;
+    }
+
+    private void CancelarEdicao()
+    {
+        _editandoId  = null;
+        _textoEdicao = "";
+    }
+
+    private async Task SalvarEdicao(Comentario c)
+    {
+        if (string.IsNullOrWhiteSpace(_textoEdicao)) return;
+
+        c.Texto     = _textoEdicao.Trim();
+        c.EditadoEm = DateTime.Now;
+
+        await AoEditarComentario.InvokeAsync(c);
+        CancelarEdicao();
     }
 
     private static string NomeTipo(string tipo) => tipo switch
@@ -142,7 +197,27 @@
 .comentario-tipo   { font-size: 10px; font-weight: 700; }
 .comentario-autor  { font-size: 10px; color: var(--ink-700); font-weight: 500; }
 .comentario-tempo  { font-size: 10px; color: var(--ink-500); margin-left: auto; }
+.comentario-editado { font-size: 10px; color: var(--ink-400, var(--ink-300)); font-style: italic; }
 .comentario-texto  { font-size: 12px; color: var(--ink-900); line-height: 1.5; }
+
+.btn-editar-comentario {
+    width: 18px; height: 18px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: var(--radius-md);
+    color: var(--ink-500); font-size: 10px;
+    background: transparent;
+    transition: background .12s, color .12s;
+    flex-shrink: 0;
+}
+.btn-editar-comentario:hover { background: rgba(0,0,0,.06); color: var(--ink-900); }
+
+.form-textarea-edicao {
+    margin-top: 4px;
+    border: 1.5px solid var(--brand-300);
+    border-radius: var(--radius-md);
+    background: #fff;
+}
+.edicao-acoes { display: flex; justify-content: flex-end; gap: 6px; margin-top: 6px; }
 
 /* ── Form TRATATIVA ── */
 .form-tratativa {

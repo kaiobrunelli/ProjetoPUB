@@ -1,4 +1,7 @@
-<Router AppAssembly="@typeof(App).Assembly">
+@* AdditionalAssemblies: as páginas (@page) agora moram nas RCLs de módulo —
+   o Router só varre o AppAssembly por padrão, então cada módulo precisa
+   entrar aqui para suas rotas serem encontradas. *@
+<Router AppAssembly="@typeof(App).Assembly" AdditionalAssemblies="_assembliesDeModulos">
     <Found Context="routeData">
         <RouteView RouteData="@routeData" DefaultLayout="@typeof(LayoutPrincipal)" />
         <FocusOnNavigate RouteData="@routeData" Selector="h1" />
@@ -10,3 +13,10 @@
         </LayoutView>
     </NotFound>
 </Router>
+
+@code {
+    private readonly System.Reflection.Assembly[] _assembliesDeModulos =
+    [
+        typeof(SipubDesembolsos.Sipub.Paginas.PaginaAnalise).Assembly,
+    ];
+}

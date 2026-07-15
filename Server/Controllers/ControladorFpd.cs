@@ -1,12 +1,13 @@
 using Microsoft.AspNetCore.Mvc;
 using SipubDesembolsos.Server.Modelos;
+using SipubDesembolsos.Server.Servicos;
 
 namespace SipubDesembolsos.Server.Controllers;
 
 [ApiController]
 [Route("api/fpd")]
 [Produces("application/json")]
-public class ControladorFpd : ControllerBase
+public class ControladorFpd(ServicoFpd servicoFpd) : ControllerBase
 {
     // GIGOVs cadastradas (mock — no real, viria do banco)
     private static readonly HashSet<string> _gigovsConhecidas =
@@ -133,4 +134,20 @@ public class ControladorFpd : ControllerBase
 
     private static EtapaValidacaoDto Ok(string texto, string detalhe)    => new() { Texto = texto, Ok = true,  Detalhe = detalhe };
     private static EtapaValidacaoDto Falha(string texto, string detalhe) => new() { Texto = texto, Ok = false, Detalhe = detalhe };
+
+    /// <summary>
+    /// Envia a FPD para solicitar o desembolso de fato — grava a ficha no banco,
+    /// cria o desembolso correspondente na lista de análise e dispara o fluxo
+    /// de notificação. Endpoint real.
+    /// </summary>
+    [HttpPost("solicitar")]
+    [ProducesResponseType(typeof(object), 200)]
+    public async Task<IActionResult> Solicitar([FromBody] SolicitacaoFpdRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Solicitante))
+            return BadRequest(new { erro = "Solicitante é obrigatório." });
+
+        var desembolsoId = await servicoFpd.SolicitarAsync(req);
+        return Ok(new { sucesso = true, desembolsoId });
+    }
 }

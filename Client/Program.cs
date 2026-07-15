@@ -1,7 +1,8 @@
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using SipubDesembolsos.Client;
-using SipubDesembolsos.Client.Servicos;
+using SipubDesembolsos.Sipub.Servicos;
+using PlataformaNotificacao.UI.Servicos;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
@@ -16,5 +17,9 @@ builder.Services.AddScoped(_ => new HttpClient { BaseAddress = new Uri(urlServid
 builder.Services.AddSingleton(_ => new SignalRService(urlServidor));
 builder.Services.AddSingleton<ServicoNotificacao>();
 builder.Services.AddSingleton<ServicoUsuario>();
+
+// Fachada de chamadas HTTP de Desembolso/FPD — ver ServicoDesembolsoApi.cs
+// para o mapa completo de endpoints reais e os que ainda faltam implementar.
+builder.Services.AddScoped<ServicoDesembolsoApi>();
 
 await builder.Build().RunAsync();

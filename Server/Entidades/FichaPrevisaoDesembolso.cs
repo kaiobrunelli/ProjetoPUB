@@ -1,18 +1,18 @@
-namespace SipubDesembolsos.Sipub.Modelos;
+namespace SipubDesembolsos.Server.Entidades;
 
 /// <summary>
-/// Requisição de envio da FPD-AF — espelha todos os campos capturados no
-/// formulário (marcados ou não), já mapeados a partir de <see cref="PreenchimentoFpd"/>
-/// via <c>MontarRequisicaoSolicitacao()</c>. Pronta para ser consumida por um
-/// endpoint POST (ex.: <c>api/fpd/solicitar</c>) assim que ele existir no servidor —
-/// o formulário já monta e tenta enviar esse objeto a cada clique em "Solicitar".
+/// Ficha de Previsão de Desembolso (FPD-AF) enviada pelo analista — grava a
+/// solicitação que dá origem a um <see cref="DesembolsoCAD"/> na lista de análise.
 /// </summary>
-public class SolicitacaoFpdRequest
+public class FichaPrevisaoDesembolso
 {
+    public int     Id           { get; set; }
+    public string? DesembolsoId { get; set; }   // FK do DesembolsoCAD gerado a partir desta FPD
+
     // ── Cabeçalho ──
-    public string    Solicitante        { get; set; } = "";
+    public string    Solicitante        { get; set; } = "";   // matrícula
     public string    Gigov              { get; set; } = "";
-    public string    Gestor             { get; set; } = "";
+    public string    Gestor             { get; set; } = "";   // matrícula
     public string    IdFpd              { get; set; } = "";
     public string    NumeroFpd          { get; set; } = "";
     public string    ContratoAf         { get; set; } = "";
@@ -30,7 +30,7 @@ public class SolicitacaoFpdRequest
     public string CnpjAgentePromotor   { get; set; } = "";
     public string Programa             { get; set; } = "";
 
-    // ── Sim/Não (sim | nao | nsa | null) — cada campo diz se foi marcado e com quê ──
+    // ── Sim/Não (sim | nao | nsa | null) ──
     public string? UltimoDesembolso   { get; set; }
     public string? Funcionalidade     { get; set; }
     public string? Conclusao          { get; set; }
@@ -49,7 +49,7 @@ public class SolicitacaoFpdRequest
     public DateTime? DataEmissaoSocioAmb { get; set; }
     public bool      Nsa                 { get; set; }
     public decimal?  PercObra            { get; set; }
-    public string    TipoDesembolso      { get; set; } = "";
+    public string    TipoDesembolso      { get; set; } = "";   // normal | adiantamento
     public string    ObsAf               { get; set; } = "";
     public string    InssObs             { get; set; } = "";
 
@@ -67,4 +67,6 @@ public class SolicitacaoFpdRequest
     public decimal? Integralizar      { get; set; }
     public decimal? SaldoDesembolsar  { get; set; }
     public decimal? SaldoIntegralizar { get; set; }
+
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 }

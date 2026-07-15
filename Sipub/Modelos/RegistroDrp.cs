@@ -1,4 +1,4 @@
-namespace SipubDesembolsos.Client.Modelos;
+namespace SipubDesembolsos.Sipub.Modelos;
 
 /// <summary>
 /// Registro da tabela de controle de baixa (DRP) — Demonstrativo de Recursos

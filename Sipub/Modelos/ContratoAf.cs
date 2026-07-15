@@ -1,4 +1,4 @@
-namespace SipubDesembolsos.Client.Modelos;
+namespace SipubDesembolsos.Sipub.Modelos;
 
 /// <summary>
 /// Dados de um contrato AF retornados pela base (consulta ao clicar em Buscar).

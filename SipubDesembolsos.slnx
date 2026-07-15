@@ -5,5 +5,9 @@
   <Folder Name="/Server/">
     <Project Path="Server/SipubDesembolsos.Server.csproj" />
   </Folder>
+  <Folder Name="/Modulos/">
+    <Project Path="Sipub/SipubDesembolsos.Sipub.csproj" />
+  </Folder>
   <Project Path="PlataformaNotificacao/PlataformaNotificacao.csproj" />
+  <Project Path="PlataformaNotificacao.UI/PlataformaNotificacao.UI.csproj" />
 </Solution>
