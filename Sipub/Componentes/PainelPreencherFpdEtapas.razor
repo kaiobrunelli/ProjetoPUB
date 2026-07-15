@@ -122,11 +122,6 @@
                 @ItemToggle("2.8", "excep", "Excepcionalização", () => _fpd.Excepcionalizacao, v => _fpd.Excepcionalizacao = v, false, null)
                 @ItemToggle("2.9", "cpalterada", "CP alterada", () => _fpd.CpAlterada, v => _fpd.CpAlterada = v, false, null)
             </div>
-
-            <div class="fpd-grupo-campos">
-                <div class="fpd-campo fpd-campo-cheio"><label class="fpd-label">INSS OBS</label>
-                    <textarea class="fpd-input fpd-textarea-sm" @bind="_fpd.InssObs"></textarea></div>
-            </div>
         }
         else
         {
@@ -202,14 +197,14 @@
         <div class="dialog-fpd-acoes">
             <button class="btn-fpd-cancelar" @onclick="AoVoltar" disabled="@(_validando || _solicitando)">Cancelar</button>
 
+            <div class="fpd-rodape-espaco"></div>
+
             @if (_etapaAtual > 1)
             {
                 <button class="btn-fpd-etapa-voltar" @onclick="EtapaAnterior" disabled="@(_validando || _solicitando)">
                     <i class="bi bi-chevron-left"></i> <span>Etapa anterior</span>
                 </button>
             }
-
-            <div class="fpd-rodape-espaco"></div>
 
             @if (_etapaAtual < 3)
             {

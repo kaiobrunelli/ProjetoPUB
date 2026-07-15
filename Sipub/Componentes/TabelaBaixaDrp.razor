@@ -85,15 +85,17 @@
                             }
                         </td>
                         <td class="drp-col-acao">
-                            <button class="drp-acao-ver" @onclick="() => AbrirResumo(r)" title="Ver resumo (checagem final)">
-                                <i class="bi bi-eye"></i>
-                            </button>
-                            @if (!r.Baixado)
-                            {
-                                <button class="drp-acao-linha" @onclick="() => AbrirBaixaUnico(r.Id)" title="Baixar este">
-                                    <i class="bi bi-check2"></i>
+                            <div class="drp-acoes-linha">
+                                <button class="drp-acao-ver" @onclick="() => AbrirResumo(r)" title="Ver resumo (checagem final)">
+                                    <i class="bi bi-eye"></i>
                                 </button>
-                            }
+                                @if (!r.Baixado)
+                                {
+                                    <button class="drp-acao-linha" @onclick="() => AbrirBaixaUnico(r.Id)" title="Baixar este">
+                                        <i class="bi bi-check2"></i>
+                                    </button>
+                                }
+                            </div>
                         </td>
                     </tr>
                 }
@@ -227,7 +229,7 @@
 
 .drp-btn-baixa {
     display: inline-flex; align-items: center; gap: 6px;
-    background: var(--ok); color: #fff;
+    background: var(--brand-700); color: #fff;
     border-radius: var(--radius-lg);
     padding: 8px 16px;
     font-size: 12.5px; font-weight: 700; font-family: inherit;
@@ -235,7 +237,7 @@
     transition: background .15s, opacity .15s;
     flex-shrink: 0;
 }
-.drp-btn-baixa:hover:not(:disabled) { background: #145f38; }
+.drp-btn-baixa:hover:not(:disabled) { background: var(--brand-800, #004F93); }
 .drp-btn-baixa:disabled { opacity: .4; cursor: not-allowed; }
 .drp-btn-baixa-num {
     background: rgba(255,255,255,.25);
@@ -276,7 +278,7 @@
 .drp-col-check { width: 36px; text-align: center; }
 .drp-col-check input { width: 15px; height: 15px; accent-color: var(--brand-700); cursor: pointer; }
 .drp-col-check input:disabled { cursor: not-allowed; }
-.drp-col-acao { width: 40px; }
+.drp-col-acao { width: 70px; }
 
 .drp-num { text-align: right; }
 .drp-valor { font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -314,21 +316,25 @@
     font-weight: 700; opacity: .8; margin-left: 2px;
 }
 
-.drp-acao-linha {
-    width: 26px; height: 26px;
-    display: flex; align-items: center; justify-content: center;
-    border-radius: var(--radius-md);
-    color: var(--ok); font-size: 14px;
-    transition: background .12s;
-}
-.drp-acao-linha:hover { background: var(--ok-bg); }
+.drp-acoes-linha { display: flex; align-items: center; gap: 4px; }
 
-.drp-acao-ver {
-    width: 26px; height: 26px;
+.drp-acao-linha {
+    width: 28px; height: 28px;
     display: inline-flex; align-items: center; justify-content: center;
     border-radius: var(--radius-md);
-    color: var(--brand-700); font-size: 14px;
+    color: var(--brand-700); font-size: 17px;
     transition: background .12s;
+    flex-shrink: 0;
+}
+.drp-acao-linha:hover { background: var(--brand-50); }
+
+.drp-acao-ver {
+    width: 28px; height: 28px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: var(--radius-md);
+    color: var(--brand-700); font-size: 17px;
+    transition: background .12s;
+    flex-shrink: 0;
 }
 .drp-acao-ver:hover { background: var(--brand-50); }
 .drp-col-acao { white-space: nowrap; }
